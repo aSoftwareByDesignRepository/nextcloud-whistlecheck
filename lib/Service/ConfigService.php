@@ -52,6 +52,8 @@ class ConfigService
 
 	public function __construct(
 		private readonly ConfigEntryMapper $mapper,
+		private readonly \OCP\IUserManager $userManager,
+		private readonly OfficerKeyService $officers,
 	) {
 	}
 
@@ -162,8 +164,15 @@ class ConfigService
 			return $value;
 		}
 		if ($key === 'escalation_uid') {
-			if ($value !== '' && !preg_match('/^[a-zA-Z0-9_\-.@]+$/', $value)) {
-				throw new ValidationException('invalid_value', 'Invalid user', [$key => 'invalid user id']);
+			if ($value === '') {
+				return $value; // empty = unset escalation target
+			}
+			// Must be a real user AND a current officer — a mistyped uid would
+			// silently disable statutory deadline escalation.
+			if (!preg_match('/^[a-zA-Z0-9_\-.@]+$/', $value)
+				|| $this->userManager->get($value) === null
+				|| !$this->officers->isOfficer($value)) {
+				throw new ValidationException('invalid_value', 'Invalid user', [$key => 'must be an active case officer']);
 			}
 			return $value;
 		}

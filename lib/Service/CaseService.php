@@ -50,6 +50,12 @@ use OCP\IUserManager;
  */
 class CaseService
 {
+	/** Cipher JSON bound for a single message (text + overhead; attachments are separate). */
+	public const MAX_MESSAGE_CIPHER_BYTES = 2 * 1024 * 1024;
+
+	/** Max attachments per submission (each blob is separately size-capped). */
+	public const MAX_ATTACHMENTS = 10;
+
 	/** Spec §9 state machine. OVERDUE is computed, never stored. */
 	public const STATUS = [
 		Wcase::STATUS_RECEIVED,
@@ -102,7 +108,20 @@ class CaseService
 		if ($bytes === null) {
 			throw new ValidationException('invalid', 'Invalid request', ['code' => 'invalid']);
 		}
-		$hint = $this->codes->lookupHint($bytes);
+		return $this->paramsByHint($this->codes->lookupHint($bytes));
+	}
+
+	/**
+	 * JS path: lookup by sha256 hint only — the raw code never crosses the wire.
+	 *
+	 * @return array{salt:string,key_salt:string}
+	 */
+	public function paramsByHint(string $hint): array
+	{
+		if (!ctype_xdigit($hint) || strlen($hint) !== 64) {
+			throw new ValidationException('invalid', 'Invalid request', ['code' => 'invalid']);
+		}
+		$hint = strtolower($hint);
 		$case = $this->cases->findByHint($hint);
 		if ($case === null) {
 			$secret = $this->instanceSecret();
@@ -124,11 +143,26 @@ class CaseService
 	public function open(string $code, string $verifierHex): array
 	{
 		$bytes = $this->codes->decodeLoose($code);
-		if ($bytes === null || !ctype_xdigit($verifierHex)) {
+		if ($bytes === null) {
 			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
 		}
-		$case = $this->cases->findByHint($this->codes->lookupHint($bytes));
-		if ($case === null || !$this->codes->verify(strtolower($verifierHex), strtolower($case->getCodeHash()))) {
+		return $this->openByHint($this->codes->lookupHint($bytes), $verifierHex);
+	}
+
+	/**
+	 * JS path — caller authenticates with hint + verifier; the raw code stays
+	 * client-side (NN-09: the server must not hold reporter key material).
+	 *
+	 * @return array<string,mixed>
+	 * @throws DomainException
+	 */
+	public function openByHint(string $hint, string $verifierHex): array
+	{
+		if (!ctype_xdigit($hint) || strlen($hint) !== 64 || !ctype_xdigit($verifierHex)) {
+			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
+		}
+		$case = $this->cases->findByHint(strtolower($hint));
+		if ($case === null || !$this->codes->verify($verifierHex, strtolower($case->getCodeHash()))) {
 			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
 		}
 		return $this->publicView($case);
@@ -203,6 +237,9 @@ class CaseService
 		}
 
 		$attachmentsIn = is_array($in['attachments'] ?? null) ? $in['attachments'] : [];
+		if (count($attachmentsIn) > self::MAX_ATTACHMENTS) {
+			throw new ValidationException('invalid', 'Too many attachments', ['attachments' => 'too_many']);
+		}
 		foreach ($attachmentsIn as $att) {
 			$this->attachmentPolicy->validateCipher(
 				(string)($att['cipher'] ?? ''),
@@ -217,7 +254,7 @@ class CaseService
 			$this->db->beginTransaction();
 			$case = new Wcase();
 			$case->setLookupHint($hint);
-			$case->setCodeHash(strtolower($verifier));
+			$case->setCodeHash(strtolower(hash('sha256', $verifier)));
 			$case->setCodeSalt($codeSalt);
 			$case->setKeySalt($keySalt);
 			$case->setReporterWrap($reporterWrap);
@@ -299,11 +336,24 @@ class CaseService
 	public function replyAsReporter(string $code, string $verifierHex, string $cipher): int
 	{
 		$bytes = $this->codes->decodeLoose($code);
-		if ($bytes === null || !ctype_xdigit($verifierHex)) {
+		if ($bytes === null) {
 			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
 		}
-		$case = $this->cases->findByHint($this->codes->lookupHint($bytes));
-		if ($case === null || !$this->codes->verify(strtolower($verifierHex), strtolower($case->getCodeHash()))) {
+		return $this->replyAsReporterByHint($this->codes->lookupHint($bytes), $verifierHex, $cipher);
+	}
+
+	/**
+	 * JS path — hint + verifier only, raw code never transmitted.
+	 *
+	 * @throws DomainException
+	 */
+	public function replyAsReporterByHint(string $hint, string $verifierHex, string $cipher): int
+	{
+		if (!ctype_xdigit($hint) || strlen($hint) !== 64 || !ctype_xdigit($verifierHex)) {
+			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
+		}
+		$case = $this->cases->findByHint(strtolower($hint));
+		if ($case === null || !$this->codes->verify($verifierHex, strtolower($case->getCodeHash()))) {
 			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
 		}
 		$this->reply($case->getId(), 'reporter', $cipher, null, null);
@@ -338,24 +388,37 @@ class CaseService
 			throw new ConflictException();
 		}
 
-		$now = new \DateTime('now', new \DateTimeZone('UTC'));
-		$msg = new Wmessage();
-		$msg->setCaseId($caseId);
-		$msg->setDirection($direction);
-		$msg->setCipher($cipher);
-		$msg->setAuthorUid($authorUid);
-		$msg->setCreatedAt($now);
-		$this->messages->insert($msg);
+		if (strlen($cipher) > self::MAX_MESSAGE_CIPHER_BYTES) {
+			throw new ValidationException('invalid', 'Message too large', ['body' => 'too_large']);
+		}
 
-		// First officer reply satisfies the 3-month feedback clock (spec US-005).
-		if ($direction === 'officer' && $case->getFeedbackSentAt() === null) {
-			$case->setFeedbackSentAt($now);
+		// Insert + CAS persist in ONE transaction — a lost CAS race must not
+		// leave a committed message the caller was told failed (orphan bug).
+		$this->db->beginTransaction();
+		try {
+			$now = new \DateTime('now', new \DateTimeZone('UTC'));
+			$msg = new Wmessage();
+			$msg->setCaseId($caseId);
+			$msg->setDirection($direction);
+			$msg->setCipher($cipher);
+			$msg->setAuthorUid($authorUid);
+			$msg->setCreatedAt($now);
+			$this->messages->insert($msg);
+
+			// First officer reply satisfies the 3-month feedback clock (spec US-005).
+			if ($direction === 'officer' && $case->getFeedbackSentAt() === null) {
+				$case->setFeedbackSentAt($now);
+			}
+			if ($direction === 'officer' && $case->getStatus() === Wcase::STATUS_RECEIVED) {
+				$case->setStatus(Wcase::STATUS_IN_REVIEW);
+			}
+			$this->persist($case, $case->getRevision());
+			$this->audit->record('message_added', $authorUid, $caseId, ['direction' => $direction, 'message_id' => $msg->getId()]);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
 		}
-		if ($direction === 'officer' && $case->getStatus() === Wcase::STATUS_RECEIVED) {
-			$case->setStatus(Wcase::STATUS_IN_REVIEW);
-		}
-		$this->persist($case, $case->getRevision());
-		$this->audit->record('message_added', $authorUid, $caseId, ['direction' => $direction, 'message_id' => $msg->getId()]);
 		return $case;
 	}
 

@@ -34,6 +34,20 @@ class FormTokenMapper extends QBMapper
 		}
 	}
 
+	/**
+	 * Atomic single-use claim: UPDATE … SET used=1 WHERE token=? AND used=0.
+	 * Returns true iff this call consumed the token (replay-safe).
+	 */
+	public function claim(string $token): bool
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->update($this->getTableName())
+			->set('used', $qb->createNamedParameter(1, IQueryBuilder::PARAM_INT))
+			->where($qb->expr()->eq('token', $qb->createNamedParameter($token)))
+			->andWhere($qb->expr()->eq('used', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
+		return $qb->executeStatement() === 1;
+	}
+
 	public function deleteOlderThan(\DateTimeInterface $cutoff): int
 	{
 		$qb = $this->db->getQueryBuilder();

@@ -184,7 +184,10 @@
 		const btn = form.querySelector('[type=submit]');
 		btn.disabled = true;
 		try {
-			const p = await api('/api/public/case/params', { code: codeInput });
+			// Zero-knowledge: the raw code NEVER leaves the client — the server
+			// only gets its sha256 lookup hint (NN-09).
+			const hint = await C.hint(bytes);
+			const p = await api('/api/public/case/params', { hint });
 			const params = (await safeJson(p))?.data;
 			if (!params) {
 				showError(t('err_invalid_code', 'Invalid or expired case code.'));
@@ -193,7 +196,7 @@
 			const verifier = await C.verifier(bytes, params.salt);
 			const kRep = await C.reporterKey(bytes, params.key_salt);
 
-			const o = await api('/api/public/case/open', { code: codeInput, verifier });
+			const o = await api('/api/public/case/open', { hint, verifier });
 			const openJson = await safeJson(o);
 			if (!o.ok || !openJson || !openJson.success) {
 				showError(t('err_invalid_code', 'Invalid or expired case code.'));
@@ -206,7 +209,7 @@
 				showError(t('err_invalid_code', 'Invalid or expired case code.'));
 				return;
 			}
-			renderThread(view, rawKey, codeInput, verifier);
+			renderThread(view, rawKey, hint, verifier);
 		} catch (e) {
 			showError(t('err_generic', 'Something went wrong. Please try again.'));
 		} finally {
@@ -214,7 +217,7 @@
 		}
 	}
 
-	async function renderThread(view, caseKey, code, verifier) {
+	async function renderThread(view, caseKey, hint, verifier) {
 		const C = window.WcCrypto;
 		const form = document.getElementById('wc-follow-form');
 		const panel = document.getElementById('wc-thread');
@@ -249,7 +252,7 @@
 				const text = replyForm.querySelector('[name=body]').value.trim();
 				if (!text) return;
 				const cipher = await C.seal(text, caseKey);
-				const res = await api('/api/public/case/reply', { code, verifier, cipher });
+				const res = await api('/api/public/case/reply', { hint, verifier, cipher });
 				const json = await safeJson(res);
 				if (res.ok && json && json.success) {
 					replyForm.querySelector('[name=body]').value = '';

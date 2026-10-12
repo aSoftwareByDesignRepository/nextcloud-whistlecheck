@@ -40,6 +40,8 @@ final class CaseServiceTest extends TestCase
 	private DeadlineService&MockObject $deadlines;
 	private IdemKeyMapper&MockObject $idem;
 	private \OCP\IDBConnection&MockObject $db;
+	private WmessageMapper&MockObject $messages;
+	private bool $casFails = false;
 	private CaseService $svc;
 
 	protected function setUp(): void
@@ -54,11 +56,12 @@ final class CaseServiceTest extends TestCase
 		$this->idem = $this->createMock(IdemKeyMapper::class);
 		$this->db = $this->createMock(IDBConnection::class);
 		$this->cases->method('updateWithRevision')->willReturnCallback(
-			fn (Wcase $c, int $rev) => ($c->setRevision($rev + 1) ?? 1));
+			fn (Wcase $c, int $rev) => $this->casFails ? 0 : ($c->setRevision($rev + 1) ?? 1));
+		$this->messages = $this->createMock(WmessageMapper::class);
 
 		$this->svc = new CaseService(
 			$this->cases,
-			$this->createMock(WmessageMapper::class),
+			$this->messages,
 			$this->createMock(WattachmentMapper::class),
 			$this->createMock(WnoteMapper::class),
 			$this->idem,
@@ -201,7 +204,7 @@ final class CaseServiceTest extends TestCase
 
 		$svc = new CaseService(
 			$this->cases,
-			$this->createMock(WmessageMapper::class),
+			$this->messages,
 			$this->createMock(WattachmentMapper::class),
 			$this->createMock(WnoteMapper::class),
 			$this->idem,
@@ -440,4 +443,99 @@ final class CaseServiceTest extends TestCase
 		$this->expectException(DomainException::class);
 		$this->svc->reply(1, 'reporter', $cipher, null, null);
 	}
+
+	public function testReplyCasLossLeavesNoOrphanMessage(): void
+	{
+		$case = $this->case(Wcase::STATUS_IN_REVIEW, 5);
+		$this->cases->method('find')->willReturn($case);
+		$this->casFails = true;
+		$this->messages->expects($this->once())->method('insert');
+		$this->db->expects($this->once())->method('rollBack');
+		$this->db->expects($this->never())->method('commit');
+		$envelope = new EnvelopeService();
+		$this->expectException(ConflictException::class);
+		$this->svc->reply(1, 'officer', $envelope->seal('x', $envelope->randomKey()), 'o1', 5);
+	}
+
+	public function testReplyRejectsOversizedCipher(): void
+	{
+		$case = $this->case(Wcase::STATUS_IN_REVIEW, 0);
+		$this->cases->method('find')->willReturn($case);
+		$huge = json_encode(['v' => 1, 'alg' => 'xs20p1305', 'n' => str_repeat('A', 32), 'c' => str_repeat('B', CaseService::MAX_MESSAGE_CIPHER_BYTES)]);
+		$this->expectException(ValidationException::class);
+		$this->svc->reply(1, 'officer', $huge, 'o1', 0);
+	}
+
+	public function testSubmitRejectsTooManyAttachments(): void
+	{
+		$env = new EnvelopeService();
+		$att = ['cipher' => $env->seal('a', $env->randomKey()), 'mime' => 'text/plain'];
+		$this->expectException(ValidationException::class);
+		try {
+			$this->svc->submit([
+				'ikey' => 'att-count-key-1',
+				'hint' => str_repeat('a', 64),
+				'verifier' => str_repeat('b', 64),
+				'code_salt' => str_repeat('c', 32),
+				'key_salt' => str_repeat('d', 32),
+				'reporter_wrap' => $env->seal('k', $env->randomKey()),
+				'body' => $env->seal('b', $env->randomKey()),
+				'wraps' => [['uid' => 'o1', 'wrap' => $env->seal('w', $env->randomKey())]],
+				'attachments' => array_fill(0, CaseService::MAX_ATTACHMENTS + 1, $att),
+			], true);
+		} catch (ValidationException $e) {
+			$this->assertArrayHasKey('attachments', $e->getFields());
+			throw $e;
+		}
+	}
+
+	public function testSubmitStoresHashedVerifierNotRawVerifier(): void
+	{
+		$env = new EnvelopeService();
+		$verifier = str_repeat('b', 64);
+		$this->cases->expects($this->once())->method('insert')
+			->willReturnCallback(function (Wcase $c) use ($verifier) {
+				$this->assertSame(hash('sha256', $verifier), $c->getCodeHash());
+				$this->assertNotSame($verifier, $c->getCodeHash());
+				$c->setId(1);
+				return $c;
+			});
+		$this->svc->submit([
+			'ikey' => 'hash-store-key-1',
+			'hint' => str_repeat('a', 64),
+			'verifier' => $verifier,
+			'code_salt' => str_repeat('c', 32),
+			'key_salt' => str_repeat('d', 32),
+			'reporter_wrap' => $env->seal('k', $env->randomKey()),
+			'body' => $env->seal('b', $env->randomKey()),
+			'wraps' => [['uid' => 'o1', 'wrap' => $env->seal('w', $env->randomKey())]],
+		], true);
+	}
+
+	public function testOpenByHintRejectsStoredVerifierAsCredential(): void
+	{
+		// code_hash = sha256(verifier). Presenting the STORED value must fail —
+		// a DB dump cannot be replayed as an auth credential.
+		$verifier = str_repeat('e', 64);
+		$case = $this->case(Wcase::STATUS_RECEIVED, 0);
+		$case->setCodeHash(hash('sha256', $verifier));
+		$this->cases->method('findByHint')->willReturn($case);
+		$this->expectException(DomainException::class);
+		$this->svc->openByHint(str_repeat('a', 64), $case->getCodeHash());
+	}
+
+	public function testOpenByHintAcceptsRealVerifier(): void
+	{
+		$verifier = str_repeat('e', 64);
+		$case = $this->case(Wcase::STATUS_RECEIVED, 0);
+		$case->setId(1);
+		$case->setCodeHash(hash('sha256', $verifier));
+		$case->setReporterWrap('');
+		$case->setReceivedAt(new \DateTime('2026-10-12', new \DateTimeZone('UTC')));
+		$case->setFeedbackDue(new \DateTime('2027-01-12'));
+		$this->cases->method('findByHint')->willReturn($case);
+		$view = $this->svc->openByHint(str_repeat('a', 64), $verifier);
+		$this->assertSame(Wcase::STATUS_RECEIVED, $view['status']);
+	}
+
 }

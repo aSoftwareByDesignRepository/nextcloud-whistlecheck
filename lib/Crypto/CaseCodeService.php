@@ -185,10 +185,13 @@ final class CaseCodeService
 
 	/**
 	 * Constant-time verifier check (spec: hash_equals, identical payload either way).
+	 *
+	 * code_hash stores sha256(verifier) — the presented verifier is hashed once
+	 * more before compare, so a DB dump cannot be replayed as a credential.
 	 */
 	public function verify(string $presentedVerifierHex, string $storedCodeHash): bool
 	{
-		return hash_equals($storedCodeHash, $presentedVerifierHex);
+		return hash_equals(strtolower($storedCodeHash), hash('sha256', strtolower($presentedVerifierHex)));
 	}
 
 	/**

@@ -36,6 +36,7 @@ class RetentionService
 {
 	public function __construct(
 		private readonly WcaseMapper $cases,
+		private readonly \OCA\WhistleCheck\Db\IdemKeyMapper $idem,
 		private readonly CaseKeyWrapMapper $wraps,
 		private readonly WmessageMapper $messages,
 		private readonly WattachmentMapper $attachments,
@@ -93,6 +94,7 @@ class RetentionService
 			$this->attachments->deleteForCase($caseId);    // 2. blobs
 			$this->messages->deleteForCase($caseId);       // 3. ciphertext
 			$this->notes->deleteForCase($caseId);
+			$this->idem->deleteForCase($caseId);           // 3b. idem key → no stale replay success
 			$this->cases->deleteById($caseId);             // 4. case row
 			$this->audit->record('case_deleted', null, $caseId, []); // 5. proof
 			$this->db->commit();

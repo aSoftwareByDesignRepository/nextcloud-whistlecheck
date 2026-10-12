@@ -143,6 +143,9 @@ class PublicPageController extends Controller
 	{
 		try {
 			$this->rate->check($this->ip(), 'verify');
+			if (!$this->config->getBool('nojs_enabled')) {
+				throw new DomainException('nojs_disabled', 'This channel requires JavaScript', 403);
+			}
 			$this->consumeFormToken();
 			$code = (string)$this->request->getParam('code', '');
 			$bytes = $this->codes->decodeLoose($code);
@@ -171,6 +174,9 @@ class PublicPageController extends Controller
 	{
 		try {
 			$this->rate->check($this->ip(), 'reply');
+			if (!$this->config->getBool('nojs_enabled')) {
+				throw new DomainException('nojs_disabled', 'This channel requires JavaScript', 403);
+			}
 			$this->consumeFormToken();
 			$code = (string)$this->request->getParam('code', '');
 			$body = (string)$this->request->getParam('body', '');
@@ -327,12 +333,15 @@ class PublicPageController extends Controller
 		$token = (string)$this->request->getParam('form_token', '');
 		$row = $this->formTokens->findByToken($token);
 		$now = new \DateTime('now', new \DateTimeZone('UTC'));
-		if ($row === null || $row->getUsed() === 1 || $now < $row->getMinSubmitAt()
+		if ($row === null || $now < $row->getMinSubmitAt()
 			|| $now->getTimestamp() - $row->getIssuedAt()->getTimestamp() > self::FORM_TOKEN_TTL) {
 			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
 		}
-		$row->setUsed(1);
-		$this->formTokens->update($row);
+		// Atomic claim — a single conditional UPDATE, so two concurrent
+		// requests cannot both observe used=0 (replay race).
+		if (!$this->formTokens->claim($token)) {
+			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
+		}
 	}
 
 	private function standalone(string $template, array $params): TemplateResponse

@@ -27,6 +27,7 @@ final class RetentionServiceTest extends TestCase
 	private WnoteMapper&MockObject $notes;
 	private AuditService&MockObject $audit;
 	private IDBConnection&MockObject $db;
+	private \OCA\WhistleCheck\Db\IdemKeyMapper|\PHPUnit\Framework\MockObject\MockObject $idem;
 	private RetentionService $svc;
 
 	protected function setUp(): void
@@ -40,8 +41,9 @@ final class RetentionServiceTest extends TestCase
 		$this->db = $this->createMock(IDBConnection::class);
 		$deadlines = $this->createMock(DeadlineService::class);
 		$deadlines->method('today')->willReturn(new \DateTime('2026-06-15'));
+		$this->idem = $this->createMock(\OCA\WhistleCheck\Db\IdemKeyMapper::class);
 		$this->svc = new RetentionService(
-			$this->cases, $this->wraps, $this->messages, $this->attachments,
+			$this->cases, $this->idem, $this->wraps, $this->messages, $this->attachments,
 			$this->notes, $deadlines, $this->audit,
 			$this->createMock(NotificationService::class), $this->db,
 		);
@@ -62,12 +64,13 @@ final class RetentionServiceTest extends TestCase
 		$this->attachments->method('deleteForCase')->willReturnCallback(function () use (&$order) { $order[] = 'attachments'; return 0; });
 		$this->messages->method('deleteForCase')->willReturnCallback(function () use (&$order) { $order[] = 'messages'; return 0; });
 		$this->notes->method('deleteForCase')->willReturnCallback(function () use (&$order) { $order[] = 'notes'; return 0; });
+		$this->idem->method('deleteForCase')->willReturnCallback(function () use (&$order) { $order[] = 'idem'; return 1; });
 		$this->cases->method('deleteById')->willReturnCallback(function () use (&$order) { $order[] = 'case'; return; });
 		$this->audit->method('record')->willReturnCallback(function () use (&$order) { $order[] = 'audit'; return new \OCA\WhistleCheck\Db\AuditEvent(); });
 
 		$this->svc->shred($this->expiredCase(42));
 
-		$this->assertSame(['wraps', 'attachments', 'messages', 'notes', 'case', 'audit'], $order);
+		$this->assertSame(['wraps', 'attachments', 'messages', 'notes', 'idem', 'case', 'audit'], $order);
 	}
 
 	public function testShredRunsInsideTransaction(): void

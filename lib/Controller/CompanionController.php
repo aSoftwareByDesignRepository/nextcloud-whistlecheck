@@ -136,11 +136,12 @@ class CompanionController extends Controller
 		try {
 			[$uid] = $this->deviceAuth();
 			$case = $this->caseMapper->find($id);
-			if ($case === null || $this->wrapMapper->findForCaseAndOfficer($id, $uid) === null) {
+			$wrap = $case === null ? null : $this->wrapMapper->findForCaseAndOfficer($id, $uid);
+			if ($wrap === null) {
 				return $this->notFound();
 			}
 			$data = $this->cases->officerView($case, $uid);
-			$data['wrap'] = $this->wrapMapper->findForCaseAndOfficer($id, $uid)->getWrappedKey();
+			$data['wrap'] = $wrap->getWrappedKey();
 			return $this->ok($data);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -158,6 +159,9 @@ class CompanionController extends Controller
 			$revision = $this->intParam($this->request->getParam('revision'));
 			if ($revision === null) {
 				return $this->fail('CONFLICT', 'Missing revision', 409);
+			}
+			if ($this->wrapMapper->findForCaseAndOfficer($id, $uid) === null) {
+				return $this->notFound();
 			}
 			$case = $this->cases->reply($id, 'officer', $cipher, $uid, $revision);
 			return $this->ok(['revision' => $case->getRevision()], 201);
@@ -177,6 +181,9 @@ class CompanionController extends Controller
 			$revision = $this->intParam($this->request->getParam('revision'));
 			if ($revision === null) {
 				return $this->fail('CONFLICT', 'Missing revision', 409);
+			}
+			if ($this->wrapMapper->findForCaseAndOfficer($id, $uid) === null) {
+				return $this->notFound();
 			}
 			$case = $this->cases->setStatus($id, $to, $revision, $uid);
 			return $this->ok(['status' => $case->getStatus(), 'revision' => $case->getRevision()]);

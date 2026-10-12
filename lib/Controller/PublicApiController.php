@@ -110,12 +110,12 @@ class PublicApiController extends Controller
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
-	public function caseParams(string $code): JSONResponse
+	public function caseParams(string $hint = ''): JSONResponse
 	{
 		try {
 			$powOk = $this->powProof('params');
 			$this->rate->check($this->ip(), 'params', $powOk);
-			return $this->ok($this->cases->params($code));
+			return $this->ok($this->cases->paramsByHint($hint));
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
 		}
@@ -126,12 +126,12 @@ class PublicApiController extends Controller
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
-	public function caseOpen(string $code, string $verifier): JSONResponse
+	public function caseOpen(string $hint = '', string $verifier = ''): JSONResponse
 	{
 		try {
 			$powOk = $this->powProof('verify');
 			$this->rate->check($this->ip(), 'verify', $powOk);
-			return $this->ok($this->cases->open($code, $verifier));
+			return $this->ok($this->cases->openByHint($hint, $verifier));
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
 		}
@@ -143,12 +143,12 @@ class PublicApiController extends Controller
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
-	public function caseReply(string $code, string $verifier, string $cipher): JSONResponse
+	public function caseReply(string $hint = '', string $verifier = '', string $cipher = ''): JSONResponse
 	{
 		try {
 			$powOk = $this->powProof('reply');
 			$this->rate->check($this->ip(), 'reply', $powOk);
-			$caseId = $this->cases->replyAsReporter($code, $verifier, $cipher);
+			$caseId = $this->cases->replyAsReporterByHint($hint, $verifier, $cipher);
 			return $this->ok(['case_id' => $caseId], 201);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);

@@ -70,12 +70,17 @@ class OfficerKeyService
 
 		$existing = $this->officers->findByUid($uid);
 		if ($existing !== null && $existing->getStatus() === Officer::STATUS_ACTIVE) {
-			// Rotation path: allowed, but treated as a new key version — caller
-			// must have performed the client-side re-wrap already.
+			if ($existing->getPubkey() === $pubkeyB64) {
+				return $existing; // idempotent re-register — NOT a rotation
+			}
+			// Real rotation: new key version + wipe every wrap sealed to the
+			// old pubkey — they are undecryptable dead weight, and removing
+			// them makes re-wrap grants pure inserts (no clobber path).
 			$existing->setPubkey($pubkeyB64);
 			$existing->setFingerprint($fp);
 			$existing->setKeyVersion($existing->getKeyVersion() + 1);
 			$this->officers->update($existing);
+			$this->wraps->deleteForOfficer($uid);
 			$this->audit->record('officer_key_rotated', $uid, null, ['uid' => $uid, 'version' => $existing->getKeyVersion()]);
 			return $existing;
 		}
@@ -108,14 +113,19 @@ class OfficerKeyService
 	public function revoke(string $targetUid, string $actorUid): void
 	{
 		$target = $this->officers->findByUid($targetUid);
-		if ($target === null || $target->getStatus() === Officer::STATUS_REVOKED) {
+		$inGroup = $this->isOfficer($targetUid);
+		// A group member who never registered has no row — but they still have
+		// full officer metadata access, so revoke must still eject them.
+		if ((!$inGroup) && ($target === null || $target->getStatus() === Officer::STATUS_REVOKED)) {
 			throw new DomainException('not_found', 'Not found', 404);
 		}
-		$now = new \DateTime('now', new \DateTimeZone('UTC'));
-		$target->setStatus(Officer::STATUS_REVOKED);
-		$target->setRevokedAt($now);
-		$target->setRevokedBy($actorUid);
-		$this->officers->update($target);
+		if ($target !== null && $target->getStatus() !== Officer::STATUS_REVOKED) {
+			$now = new \DateTime('now', new \DateTimeZone('UTC'));
+			$target->setStatus(Officer::STATUS_REVOKED);
+			$target->setRevokedAt($now);
+			$target->setRevokedBy($actorUid);
+			$this->officers->update($target);
+		}
 		$this->wraps->deleteForOfficer($targetUid);
 		// Eject from the officer group — `isOfficer` is the group's only gate,
 		// so without this a revoked officer keeps full API access and could
@@ -172,9 +182,12 @@ class OfficerKeyService
 		foreach ($wrapsByUid as $uid => $envelopeJson) {
 			$existing = $this->wraps->findForCaseAndOfficer($caseId, (string)$uid);
 			if ($existing !== null) {
-				$existing->setWrappedKey($envelopeJson);
-				$this->wraps->update($existing);
-				continue;
+				// Never clobber a live wrap: the server cannot verify sealed-box
+				// contents, so an overwrite slot is an insider denial-of-access
+				// hole. Rotation frees slots by deleting stale wraps first
+				// (see register()).
+				$this->audit->record('wrap_overwrite_rejected', $grantedBy, $caseId, ['target_uid' => (string)$uid]);
+				throw new ValidationException('wrap_exists', 'Officer already holds a wrap', ['officers' => 'wrap exists']);
 			}
 			$wrap = new \OCA\WhistleCheck\Db\CaseKeyWrap();
 			$wrap->setCaseId($caseId);

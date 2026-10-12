@@ -11,6 +11,7 @@ namespace OCA\WhistleCheck\Db;
 
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\QBMapper;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 /** @template-extends QBMapper<IdemKey> */
@@ -31,6 +32,18 @@ class IdemKeyMapper extends QBMapper
 		} catch (DoesNotExistException) {
 			return null;
 		}
+	}
+
+	/**
+	 * Retention shred must remove the idempotency record too — otherwise a
+	 * replayed submit ikey returns a stale success pointing at a deleted case.
+	 */
+	public function deleteForCase(int $caseId): int
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->delete($this->getTableName())
+			->where($qb->expr()->eq('case_id', $qb->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)));
+		return $qb->executeStatement();
 	}
 
 	public function deleteOlderThan(\DateTimeInterface $cutoff): int

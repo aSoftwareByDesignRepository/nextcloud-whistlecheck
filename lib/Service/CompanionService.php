@@ -30,6 +30,9 @@ use OCP\Lock\LockedException;
  */
 class CompanionService
 {
+	/** Per-officer paired-device cap — devices live in one appconfig JSON blob. */
+	public const MAX_DEVICES = 5;
+
 	private const TOKEN_PREFIX = 'wcd_';
 
 	public function __construct(
@@ -55,6 +58,9 @@ class CompanionService
 		$deviceId = bin2hex(random_bytes(8));
 		$token = self::TOKEN_PREFIX . bin2hex(random_bytes(32));
 		$devices = $this->devices($uid);
+		if (count($devices) >= self::MAX_DEVICES) {
+			throw new DomainException('too_many_devices', 'Device limit reached — revoke an unused device first', 409);
+		}
 		$devices[$deviceId] = [
 			'name' => mb_substr($deviceName, 0, 64),
 			'hash' => hash('sha256', $token),

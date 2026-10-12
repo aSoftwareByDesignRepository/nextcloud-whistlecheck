@@ -91,6 +91,21 @@ class ApiController extends Controller
 		return $uid;
 	}
 
+	/**
+	 * Case access boundary: a case exists for an officer iff they hold a
+	 * case-key wrap for it (spec US-007 AC-2). Reads AND writes use this —
+	 * an officer without a wrap must not even learn the case exists.
+	 */
+	private function caseForOfficer(int $id, string $uid): ?\OCA\WhistleCheck\Db\Wcase
+	{
+		$case = $this->caseMapper->find($id);
+		if ($case === null
+			|| $this->wrapMapper->findForCaseAndOfficer($id, $uid) === null) {
+			return null;
+		}
+		return $case;
+	}
+
 	#[NoAdminRequired]
 	public function inbox(): JSONResponse
 	{
@@ -100,6 +115,9 @@ class ApiController extends Controller
 			$out = [];
 			foreach ($this->caseMapper->listInbox() as $case) {
 				$wrap = $this->wrapMapper->findForCaseAndOfficer($case->getId(), $uid);
+				if ($wrap === null) {
+					continue; // US-007 AC-2: pre-grant cases are invisible, not "locked"
+				}
 				$out[] = [
 					'id' => $case->getId(),
 					'status' => $case->getStatus(),
@@ -157,6 +175,9 @@ class ApiController extends Controller
 			if ($revision === null) {
 				return $this->fail('CONFLICT', 'Missing revision', 409);
 			}
+			if ($this->caseForOfficer($id, $uid) === null) {
+				return $this->notFound();
+			}
 			$case = $this->cases->reply($id, 'officer', $cipher, $uid, $revision);
 			return $this->ok(['revision' => $case->getRevision()], 201);
 		} catch (\Throwable $e) {
@@ -173,6 +194,9 @@ class ApiController extends Controller
 			$revision = $this->intParam($this->request->getParam('revision'));
 			if ($revision === null) {
 				return $this->fail('CONFLICT', 'Missing revision', 409);
+			}
+			if ($this->caseForOfficer($id, $uid) === null) {
+				return $this->notFound();
 			}
 			$case = $this->cases->setStatus($id, $to, $revision, $uid);
 			return $this->ok([
@@ -196,6 +220,9 @@ class ApiController extends Controller
 			if ($revision === null) {
 				return $this->fail('CONFLICT', 'Missing revision', 409);
 			}
+			if ($this->caseForOfficer($id, $uid) === null) {
+				return $this->notFound();
+			}
 			$case = $this->cases->assign($id, $target === null || $target === '' ? null : (string)$target, $revision, $uid);
 			return $this->ok(['assigned_to' => $case->getAssignedTo(), 'revision' => $case->getRevision()]);
 		} catch (\Throwable $e) {
@@ -215,6 +242,9 @@ class ApiController extends Controller
 			if ($revision === null) {
 				return $this->fail('CONFLICT', 'Missing revision', 409);
 			}
+			if ($this->caseForOfficer($id, $uid) === null) {
+				return $this->notFound();
+			}
 			$case = $this->cases->setHold($id, $hold, is_string($reason) ? $reason : null, $revision, $uid);
 			return $this->ok(['legal_hold' => $case->getLegalHold() === 1, 'revision' => $case->getRevision()]);
 		} catch (\Throwable $e) {
@@ -231,6 +261,9 @@ class ApiController extends Controller
 			if ($revision === null) {
 				return $this->fail('CONFLICT', 'Missing revision', 409);
 			}
+			if ($this->caseForOfficer($id, $uid) === null) {
+				return $this->notFound();
+			}
 			$case = $this->cases->confirmClose($id, $revision, $uid);
 			return $this->ok(['status' => $case->getStatus(), 'revision' => $case->getRevision()]);
 		} catch (\Throwable $e) {
@@ -243,7 +276,7 @@ class ApiController extends Controller
 	{
 		try {
 			$uid = $this->officerGuard();
-			if ($this->caseMapper->find($id) === null) {
+			if ($this->caseForOfficer($id, $uid) === null) {
 				return $this->notFound();
 			}
 			$out = array_map(static fn ($n) => [
@@ -263,11 +296,12 @@ class ApiController extends Controller
 	{
 		try {
 			$uid = $this->officerGuard();
-			if ($this->caseMapper->find($id) === null) {
+			if ($this->caseForOfficer($id, $uid) === null) {
 				return $this->notFound();
 			}
 			$cipher = (string)$this->request->getParam('cipher', '');
-			if (!$this->envelope->isValidEnvelope($cipher)) {
+			if (strlen($cipher) > \OCA\WhistleCheck\Service\CaseService::MAX_MESSAGE_CIPHER_BYTES
+				|| !$this->envelope->isValidEnvelope($cipher)) {
 				throw new ValidationException('invalid', 'Invalid note', ['note' => 'invalid']);
 			}
 			$note = new \OCA\WhistleCheck\Db\Wnote();
@@ -288,6 +322,9 @@ class ApiController extends Controller
 	{
 		try {
 			$uid = $this->officerGuard();
+			if ($this->caseForOfficer($id, $uid) === null) {
+				return $this->notFound();
+			}
 			$note = $this->noteMapper->find($noteId);
 			if ($note === null || $note->getCaseId() !== $id || $note->getAuthorUid() !== $uid) {
 				return $this->notFound(); // not found OR not yours — one payload
@@ -305,7 +342,7 @@ class ApiController extends Controller
 	{
 		try {
 			$uid = $this->officerGuard();
-			$case = $this->caseMapper->find($id);
+			$case = $this->caseForOfficer($id, $uid);
 			if ($case === null) {
 				return $this->notFound();
 			}

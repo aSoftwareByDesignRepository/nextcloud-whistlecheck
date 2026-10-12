@@ -15,12 +15,16 @@ use PHPUnit\Framework\TestCase;
 final class ConfigServiceTest extends TestCase
 {
 	private ConfigEntryMapper&MockObject $mapper;
+	private \OCP\IUserManager&MockObject $userManager;
+	private \OCA\WhistleCheck\Service\OfficerKeyService&MockObject $officers;
 	private ConfigService $svc;
 
 	protected function setUp(): void
 	{
 		$this->mapper = $this->createMock(ConfigEntryMapper::class);
-		$this->svc = new ConfigService($this->mapper);
+		$this->userManager = $this->createMock(\OCP\IUserManager::class);
+		$this->officers = $this->createMock(\OCA\WhistleCheck\Service\OfficerKeyService::class);
+		$this->svc = new ConfigService($this->mapper, $this->userManager, $this->officers);
 	}
 
 	private function row(string $key, string $value, int $rev): ConfigEntry
@@ -51,7 +55,9 @@ final class ConfigServiceTest extends TestCase
 		// 'true' stored raw is not '1' — getBool is strict
 		$this->assertFalse($this->svc->getBool('attachments_enabled'));
 		$this->mapper = $this->createMock(ConfigEntryMapper::class);
-		$this->svc = new ConfigService($this->mapper);
+		$this->userManager = $this->createMock(\OCP\IUserManager::class);
+		$this->officers = $this->createMock(\OCA\WhistleCheck\Service\OfficerKeyService::class);
+		$this->svc = new ConfigService($this->mapper, $this->userManager, $this->officers);
 		$this->mapper->method('findByKey')->willReturn($this->row('attachments_enabled', '1', 1));
 		$this->assertTrue($this->svc->getBool('attachments_enabled'));
 	}
@@ -128,9 +134,21 @@ final class ConfigServiceTest extends TestCase
 
 	public function testValidateEscalationUid(): void
 	{
+		$this->assertSame('', $this->svc->validate('escalation_uid', '')); // unset allowed
+
+		$user = $this->createMock(\OCP\IUser::class);
+		$this->userManager->method('get')->willReturnCallback(
+			static fn (string $u) => $u === 'officer_1' ? $user : null);
+		$this->officers->method('isOfficer')->willReturnCallback(
+			static fn (string $u) => $u === 'officer_1');
 		$this->assertSame('officer_1', $this->svc->validate('escalation_uid', 'officer_1'));
-		$this->assertSame('', $this->svc->validate('escalation_uid', ''));
-		$this->expectException(ValidationException::class);
-		$this->svc->validate('escalation_uid', 'bad user!');
+
+		foreach (['bad user!', 'ghost_zzz', 'wcplain'] as $bad) {
+			try {
+				$this->svc->validate('escalation_uid', $bad);
+				$this->fail("expected rejection for $bad");
+			} catch (ValidationException) {
+			}
+		}
 	}
 }

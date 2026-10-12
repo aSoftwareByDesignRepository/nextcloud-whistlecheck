@@ -71,6 +71,9 @@ trait ApiControllerTrait
 			}
 			return $this->fail($e->errorCode, $e->getMessage(), $e->httpStatus, [], $e->retryAfterSeconds);
 		}
+		// Class + location only: exception messages can embed bound input
+		// values (PDO/driver errors) and must not reach the error log.
+		error_log('WCHK-INTERNAL ' . get_class($e) . ' @ ' . $e->getFile() . ':' . $e->getLine());
 		return $this->fail('INTERNAL', 'Internal error', 500);
 	}
 

@@ -111,9 +111,12 @@ final class CaseCodeServiceTest extends TestCase
 		$gen = $this->svc->generate();
 		$salt = $this->svc->newSalt();
 		$verifier = $this->svc->verifier($gen['bytes'], $salt);
-		$this->assertTrue($this->svc->verify($verifier, $verifier));
+		$stored = hash('sha256', $verifier); // code_hash stores sha256(verifier)
+		$this->assertTrue($this->svc->verify($verifier, $stored));
+		// The stored digest is NOT a replayable credential.
+		$this->assertFalse($this->svc->verify($stored, $stored));
 		$other = $this->svc->generate();
-		$this->assertFalse($this->svc->verify($this->svc->verifier($other['bytes'], $salt), $verifier));
+		$this->assertFalse($this->svc->verify($this->svc->verifier($other['bytes'], $salt), $stored));
 	}
 
 	public function testVerifierRejectsBadSalt(): void

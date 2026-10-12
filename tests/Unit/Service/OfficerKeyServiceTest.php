@@ -1,0 +1,152 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\WhistleCheck\Tests\Unit\Service;
+
+use OCA\WhistleCheck\Crypto\EnvelopeService;
+use OCA\WhistleCheck\Db\CaseKeyWrap;
+use OCA\WhistleCheck\Db\CaseKeyWrapMapper;
+use OCA\WhistleCheck\Db\Officer;
+use OCA\WhistleCheck\Db\OfficerMapper;
+use OCA\WhistleCheck\Exception\DomainException;
+use OCA\WhistleCheck\Exception\ValidationException;
+use OCA\WhistleCheck\Service\AuditService;
+use OCA\WhistleCheck\Service\OfficerKeyService;
+use OCP\IGroup;
+use OCP\IGroupManager;
+use OCP\IUser;
+use OCP\IUserManager;
+use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\TestCase;
+
+final class OfficerKeyServiceTest extends TestCase
+{
+	private OfficerMapper&MockObject $officers;
+	private CaseKeyWrapMapper&MockObject $wraps;
+	private IUserManager&MockObject $users;
+	private IGroupManager&MockObject $groups;
+	private IGroup&MockObject $group;
+	private OfficerKeyService $svc;
+
+	protected function setUp(): void
+	{
+		$this->officers = $this->createMock(OfficerMapper::class);
+		$this->wraps = $this->createMock(CaseKeyWrapMapper::class);
+		$this->users = $this->createMock(IUserManager::class);
+		$this->groups = $this->createMock(IGroupManager::class);
+		$this->group = $this->createMock(IGroup::class);
+		$this->groups->method('get')->willReturn($this->group);
+		$this->svc = new OfficerKeyService(
+			$this->officers,
+			$this->wraps,
+			new EnvelopeService(),
+			$this->createMock(AuditService::class),
+			$this->users,
+			$this->groups,
+		);
+	}
+
+	private function activeOfficer(string $uid, int $version = 1): Officer
+	{
+		$o = new Officer();
+		$o->setUid($uid);
+		$o->setPubkey(base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES)));
+		$o->setFingerprint('fp');
+		$o->setStatus(Officer::STATUS_ACTIVE);
+		$o->setKeyVersion($version);
+		return $o;
+	}
+
+	private function sealedbox(): string
+	{
+		$env = new EnvelopeService();
+		$kp = sodium_crypto_box_keypair();
+		$pk = sodium_crypto_box_publickey($kp);
+		return $env->sealToPubkey('key-material', base64_encode($pk));
+	}
+
+	// ── wrap grant authorization ────────────────────────────────────────
+
+	public function testStoreWrapsRejectsOverwriteOfExistingWrap(): void
+	{
+		$target = $this->activeOfficer('o2');
+		$this->officers->method('findActive')->willReturn([$target]);
+		$this->wraps->method('findForCaseAndOfficer')->willReturn(new CaseKeyWrap());
+		$this->wraps->expects($this->never())->method('update');
+		$this->expectException(ValidationException::class);
+		$this->svc->storeWraps(7, ['o2' => $this->sealedbox()], 'o1');
+	}
+
+	public function testStoreWrapsInsertsForWraplessOfficer(): void
+	{
+		$target = $this->activeOfficer('o2');
+		$this->officers->method('findActive')->willReturn([$target]);
+		$this->wraps->method('findForCaseAndOfficer')->willReturn(null);
+		$this->wraps->expects($this->once())->method('insert');
+		$this->svc->storeWraps(7, ['o2' => $this->sealedbox()], 'o1');
+	}
+
+	public function testStoreWrapsRejectsRevokedOrForeignUid(): void
+	{
+		$this->officers->method('findActive')->willReturn([$this->activeOfficer('o1')]);
+		$this->expectException(ValidationException::class);
+		$this->svc->storeWraps(7, ['ghost' => $this->sealedbox()], 'o1');
+	}
+
+	// ── rotation ────────────────────────────────────────────────────────
+
+	public function testReRegisterSameKeyIsNoOpNotRotation(): void
+	{
+		$existing = $this->activeOfficer('o1', 3);
+		$this->officers->method('findByUid')->willReturn($existing);
+		$user = $this->createMock(IUser::class);
+		$this->users->method('get')->willReturn($user);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$this->group->method('inGroup')->willReturn(true);
+		// Same pubkey → no version bump, no wrap wipe, no audit rotation.
+		$this->officers->expects($this->never())->method('update');
+		$this->wraps->expects($this->never())->method('deleteForOfficer');
+		$out = $this->svc->register('o1', $existing->getPubkey(), null);
+		$this->assertSame(3, $out->getKeyVersion());
+	}
+
+	public function testRotationWipesStaleWraps(): void
+	{
+		$existing = $this->activeOfficer('o1', 2);
+		$this->officers->method('findByUid')->willReturn($existing);
+		$user = $this->createMock(IUser::class);
+		$this->users->method('get')->willReturn($user);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$this->group->method('inGroup')->willReturn(true);
+		$this->wraps->expects($this->once())->method('deleteForOfficer')->with('o1');
+		$newKey = base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES));
+		$out = $this->svc->register('o1', $newKey, null);
+		$this->assertSame(3, $out->getKeyVersion());
+	}
+
+	// ── revoke ──────────────────────────────────────────────────────────
+
+	public function testRevokeEjectsGroupMemberWithoutOfficerRow(): void
+	{
+		// User in officer group but no wchk_officers row — must still be ejected.
+		$this->officers->method('findByUid')->willReturn(null);
+		$user = $this->createMock(IUser::class);
+		$this->users->method('get')->willReturn($user);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$this->group->method('inGroup')->willReturn(true);
+		$this->group->expects($this->once())->method('removeUser')->with($user);
+		$this->wraps->expects($this->once())->method('deleteForOfficer')->with('ghost');
+		$this->svc->revoke('ghost', 'admin');
+	}
+
+	public function testRevokeUnknownUserStill404s(): void
+	{
+		$this->officers->method('findByUid')->willReturn(null);
+		$this->users->method('get')->willReturn(null);
+		$this->groups->method('isInGroup')->willReturn(false);
+		$this->group->method('inGroup')->willReturn(false);
+		$this->expectException(DomainException::class);
+		$this->svc->revoke('nobody', 'admin');
+	}
+}
