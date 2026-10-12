@@ -57,17 +57,20 @@ class CompanionService
 		}
 		$deviceId = bin2hex(random_bytes(8));
 		$token = self::TOKEN_PREFIX . bin2hex(random_bytes(32));
-		$devices = $this->devices($uid);
-		if (count($devices) >= self::MAX_DEVICES) {
-			throw new DomainException('too_many_devices', 'Device limit reached — revoke an unused device first', 409);
-		}
-		$devices[$deviceId] = [
-			'name' => mb_substr($deviceName, 0, 64),
-			'hash' => hash('sha256', $token),
-			'created' => gmdate('Y-m-d\TH:i:s\Z'),
-			'last_seen' => null,
-		];
-		$this->saveDevices($uid, $devices);
+		$this->mutateDevices($uid, static function (array $devices) use ($deviceId, $deviceName, $token): array {
+			// Cap check INSIDE the lock — two concurrent pairs must not both
+			// pass count() < MAX_DEVICES (TOCTOU past the cap).
+			if (count($devices) >= self::MAX_DEVICES) {
+				throw new DomainException('too_many_devices', 'Device limit reached — revoke an unused device first', 409);
+			}
+			$devices[$deviceId] = [
+				'name' => mb_substr($deviceName, 0, 64),
+				'hash' => hash('sha256', $token),
+				'created' => gmdate('Y-m-d\TH:i:s\Z'),
+				'last_seen' => null,
+			];
+			return $devices;
+		});
 		$this->audit->record('device_paired', $uid, null, []);
 		return ['device_id' => $deviceId, 'token' => $token];
 	}
@@ -111,17 +114,18 @@ class CompanionService
 	 */
 	public function touch(string $uid, string $deviceId): void
 	{
-		$devices = $this->devices($uid);
-		if (!isset($devices[$deviceId])) {
-			return;
-		}
 		$now = gmdate('Y-m-d\TH:i:s\Z');
-		$last = $devices[$deviceId]['last_seen'] ?? null;
-		if ($last !== null && strtotime($now) - strtotime((string)$last) < 60) {
-			return;
-		}
-		$devices[$deviceId]['last_seen'] = $now;
-		$this->saveDevices($uid, $devices);
+		$this->mutateDevices($uid, static function (array $devices) use ($deviceId, $now): ?array {
+			if (!isset($devices[$deviceId])) {
+				return null;
+			}
+			$last = $devices[$deviceId]['last_seen'] ?? null;
+			if ($last !== null && strtotime($now) - strtotime((string)$last) < 60) {
+				return null; // throttled — no write
+			}
+			$devices[$deviceId]['last_seen'] = $now;
+			return $devices;
+		});
 	}
 
 	/** @return array<string,array{name:string,hash:string,created:string,last_seen:?string}> */
@@ -137,30 +141,51 @@ class CompanionService
 
 	public function revoke(string $uid, string $deviceId): void
 	{
-		$devices = $this->devices($uid);
-		if (isset($devices[$deviceId])) {
+		$removed = false;
+		$this->mutateDevices($uid, static function (array $devices) use ($deviceId, &$removed): ?array {
+			if (!isset($devices[$deviceId])) {
+				return null;
+			}
 			unset($devices[$deviceId]);
-			$this->saveDevices($uid, $devices);
+			$removed = true;
+			return $devices;
+		});
+		if ($removed) {
 			$this->audit->record('device_revoked', $uid, null, []);
 		}
 	}
 
-	/** @param array<string,array<string,mixed>> $devices */
-	private function saveDevices(string $uid, array $devices): void
+	/**
+	 * Read–mutate–write the device store under ONE held lock. The previous
+	 * shape read `devices()` BEFORE locking, so pair/revoke/touch were a
+	 * classic lost-update race: a revoke concurrent with a pair could keep
+	 * the revoked device alive, and two pairs could both pass the cap.
+	 * The mutator returns the new map, or null to skip the write entirely.
+	 * Audit calls stay OUTSIDE this method — they take `wchk.audit.chain`
+	 * and lock nesting is forbidden (single-key acquisitions only).
+	 *
+	 * @param callable(array<string,array<string,mixed>>): ?array<string,array<string,mixed>> $mutator
+	 */
+	private function mutateDevices(string $uid, callable $mutator): void
 	{
+		$lockKey = 'wchk.dev.' . substr(hash('sha256', $uid), 0, 40);
 		try {
-			$this->lockProvider->acquireLock('wchk.dev.' . substr(hash('sha256', $uid), 0, 40), ILockingProvider::LOCK_EXCLUSIVE, 'device store');
+			$this->lockProvider->acquireLock($lockKey, ILockingProvider::LOCK_EXCLUSIVE, 'device store');
 		} catch (LockedException) {
-			throw new \OCA\WhistleCheck\Exception\DomainException('busy', 'Busy — retry', 503);
+			throw new DomainException('busy', 'Busy — retry', 503);
 		}
 		try {
+			$devices = $mutator($this->devices($uid));
+			if ($devices === null) {
+				return;
+			}
 			if ($devices === []) {
 				$this->appConfig->deleteKey('whistlecheck', 'devices_' . $uid);
 			} else {
 				$this->appConfig->setValueString('whistlecheck', 'devices_' . $uid, (string)json_encode($devices));
 			}
 		} finally {
-			$this->lockProvider->releaseLock('wchk.dev.' . substr(hash('sha256', $uid), 0, 40), ILockingProvider::LOCK_EXCLUSIVE);
+			$this->lockProvider->releaseLock($lockKey, ILockingProvider::LOCK_EXCLUSIVE);
 		}
 	}
 }

@@ -218,6 +218,17 @@ class CompanionController extends Controller
 	{
 		try {
 			[$uid] = $this->deviceAuth();
+			// Bearer tokens may first-register or idempotently re-register the
+			// SAME pubkey — never rotate. Rotation wipes every wrap the officer
+			// holds, so a stolen device token would become a permanent,
+			// unilateral case-access lockout. Changed pubkeys require the
+			// session-authenticated web endpoint (api#registerKey).
+			$existing = $this->officers->findByUid($uid);
+			if ($existing !== null
+				&& $existing->getStatus() === \OCA\WhistleCheck\Db\Officer::STATUS_ACTIVE
+				&& $existing->getPubkey() !== '' && $existing->getPubkey() !== $pubkey) {
+				throw new DomainException('rotation_requires_web', 'Key rotation requires the web UI', 403);
+			}
 			$officer = $this->officerKeys->register($uid, $pubkey, $uid);
 			return $this->ok(['fingerprint' => $officer->getFingerprint(), 'key_version' => $officer->getKeyVersion()], 201);
 		} catch (\Throwable $e) {

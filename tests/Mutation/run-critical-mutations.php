@@ -61,7 +61,7 @@ $mutations = [
 	[
 		'name' => 'verifier_always_valid',
 		'file' => 'lib/Crypto/CaseCodeService.php',
-		'from' => 'return hash_equals($storedCodeHash, $presentedVerifierHex);',
+		'from' => 'return hash_equals(strtolower($storedCodeHash), hash(\'sha256\', strtolower($presentedVerifierHex)));',
 		'to' => 'return true;',
 		'filters' => ['CaseCodeServiceTest'],
 	],
@@ -141,6 +141,20 @@ $mutations = [
 		'from' => '$seq = $prev === null ? 1 : $prev->getSeq() + 1;',
 		'to' => '$seq = 1;',
 		'filters' => ['AuditServiceTest'],
+	],
+	[
+		'name' => 'device_cap_unchecked',
+		'file' => 'lib/Service/CompanionService.php',
+		'from' => 'if (count($devices) >= self::MAX_DEVICES) {',
+		'to' => 'if (false && count($devices) >= self::MAX_DEVICES) {',
+		'filters' => ['CompanionServiceTest'],
+	],
+	[
+		'name' => 'touch_throttle_dropped',
+		'file' => 'lib/Service/CompanionService.php',
+		'from' => 'if ($last !== null && strtotime($now) - strtotime((string)$last) < 60) {',
+		'to' => 'if (false && $last !== null && strtotime($now) - strtotime((string)$last) < 60) {',
+		'filters' => ['CompanionServiceTest'],
 	],
 	[
 		'name' => 'ratelimit_no_increment',
