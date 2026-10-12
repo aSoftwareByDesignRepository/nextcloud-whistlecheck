@@ -110,6 +110,7 @@ class ApiController extends Controller
 					'days_until_due' => $case->daysUntilDue($today),
 					'legal_hold' => $case->getLegalHold() === 1,
 					'close_requested_by' => $case->getCloseRequestedBy(),
+				'close_requested_to' => $case->getCloseRequestedTo(),
 					'category_id' => $case->getCategoryId(),
 					// Officer's wrapped content key — they decrypt client-side.
 					'wrap' => $wrap?->getWrappedKey(),
@@ -178,6 +179,7 @@ class ApiController extends Controller
 				'status' => $case->getStatus(),
 				'revision' => $case->getRevision(),
 				'close_requested_by' => $case->getCloseRequestedBy(),
+				'close_requested_to' => $case->getCloseRequestedTo(),
 			]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -229,7 +231,7 @@ class ApiController extends Controller
 			if ($revision === null) {
 				return $this->fail('CONFLICT', 'Missing revision', 409);
 			}
-			$case = $this->cases->setStatus($id, \OCA\WhistleCheck\Db\Wcase::STATUS_CLOSED, $revision, $uid);
+			$case = $this->cases->confirmClose($id, $revision, $uid);
 			return $this->ok(['status' => $case->getStatus(), 'revision' => $case->getRevision()]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -403,6 +405,7 @@ class ApiController extends Controller
 				return $this->fail('invalid', 'Cannot revoke yourself', 400);
 			}
 			$this->officerKeys->revoke($uid, $actor);
+			$this->companion->purgeOfficerDevices($uid);
 			return $this->ok([]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);

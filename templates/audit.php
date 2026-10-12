@@ -2,8 +2,9 @@
 /** @var \OCP\IL10N $l */
 declare(strict_types=1);
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>" data-wc-page="audit">
-	<div class="wc-app-wrap">
+<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>
+	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>" data-wc-page="audit">
+	<div class="wc-app-wrap" id="wc-main">
 		<h1><?php p($l->t('Audit log')); ?></h1>
 		<p><?php p($l->t('Integrity:')); ?> <strong data-wc-chain></strong></p>
 		<table class="wc-table">

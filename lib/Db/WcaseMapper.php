@@ -155,6 +155,7 @@ class WcaseMapper extends QBMapper
 			->set('reminder_sent_at', $qb->createNamedParameter($case->getReminderSentAt()?->format('Y-m-d H:i:s')))
 			->set('overdue_notified_at', $qb->createNamedParameter($case->getOverdueNotifiedAt()?->format('Y-m-d H:i:s')))
 			->set('close_requested_by', $qb->createNamedParameter($case->getCloseRequestedBy()))
+			->set('close_requested_to', $qb->createNamedParameter($case->getCloseRequestedTo()))
 			->set('closed_at', $qb->createNamedParameter($case->getClosedAt()?->format('Y-m-d H:i:s')))
 			->set('closed_by', $qb->createNamedParameter($case->getClosedBy()))
 			->set('retention_until', $qb->createNamedParameter($case->getRetentionUntil()?->format('Y-m-d')))

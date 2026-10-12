@@ -2,10 +2,11 @@
 /** @var \OCP\IL10N $l */
 declare(strict_types=1);
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>" data-wc-page="inbox"
+<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>
+	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>" data-wc-page="inbox"
 	data-wc-uid="<?php p($_['wc_uid'] ?? ''); ?>"
 	data-wc-officers="<?php p(json_encode($_['officers'] ?? [])); ?>">
-	<div class="wc-app-wrap">
+	<div class="wc-app-wrap" id="wc-main">
 		<header class="wc-app-header">
 			<h1><?php p($l->t('Case inbox')); ?></h1>
 			<nav class="wc-nav" aria-label="<?php p($l->t('WhistleCheck')); ?>">

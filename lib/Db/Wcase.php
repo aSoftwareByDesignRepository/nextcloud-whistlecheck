@@ -53,6 +53,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setOverdueNotifiedAt(?\DateTime $v)
  * @method string|null getCloseRequestedBy()
  * @method void setCloseRequestedBy(?string $v)
+ * @method string|null getCloseRequestedTo()
+ * @method void setCloseRequestedTo(?string $v)
  * @method \DateTime|null getClosedAt()
  * @method void setClosedAt(?\DateTime $v)
  * @method string|null getClosedBy()
@@ -103,6 +105,7 @@ class Wcase extends Entity
 	protected $reminderSentAt;
 	protected $overdueNotifiedAt;
 	protected $closeRequestedBy;
+	protected $closeRequestedTo;
 	protected $closedAt;
 	protected $closedBy;
 	protected $retentionUntil;

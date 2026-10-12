@@ -354,8 +354,7 @@ class CaseService
 		if ($direction === 'officer' && $case->getStatus() === Wcase::STATUS_RECEIVED) {
 			$case->setStatus(Wcase::STATUS_IN_REVIEW);
 		}
-		$case->setRevision($case->getRevision() + 1);
-		$this->cases->update($case);
+		$this->persist($case, $case->getRevision());
 		$this->audit->record('message_added', $authorUid, $caseId, ['direction' => $direction, 'message_id' => $msg->getId()]);
 		return $case;
 	}
@@ -390,38 +389,66 @@ class CaseService
 			$needsSecond = count($this->officerKeys->activePubkeys()) >= 2;
 			if ($needsSecond) {
 				$requester = $case->getCloseRequestedBy();
+				// NULL target = legacy row from before close_requested_to existed;
+				// the old confirm path always applied `closed`, so NULL maps to it.
+				$pendingTo = $case->getCloseRequestedTo() ?? Wcase::STATUS_CLOSED;
+				if ($requester !== null && $pendingTo === $from) {
+					// Moot request: the case already reached the pending target
+					// (e.g. legacy rows). Drop the stale marker — it could never
+					// be confirmed because the transition is no longer legal.
+					$case->setCloseRequestedBy(null);
+					$case->setCloseRequestedTo(null);
+					$requester = null;
+				}
 				if ($requester === null) {
 					$case->setCloseRequestedBy($actorUid);
-					$case->setRevision($revision + 1);
-					$this->cases->update($case);
+					$case->setCloseRequestedTo($to);
+					$this->persist($case, $revision);
 					$this->audit->record('close_requested', $actorUid, $caseId, ['to' => $to]);
 					return $case;
 				}
 				if ($requester === $actorUid) {
+					// The requester may revise their own pending request to a
+					// different terminal target — it still needs second-officer
+					// confirmation, and the change is audited. A repeated
+					// identical request stays rejected.
+					if ($pendingTo !== $to) {
+						$case->setCloseRequestedTo($to);
+						$this->persist($case, $revision);
+						$this->audit->record('close_requested', $actorUid, $caseId, ['to' => $to, 'revised' => true]);
+						return $case;
+					}
 					throw new DomainException('second_officer_required', 'A second officer must confirm', 409);
+				}
+				if ($pendingTo !== $to) {
+					throw new DomainException('pending_mismatch', 'A different terminal transition is already pending', 409);
 				}
 			}
 			$case->setStatus($to);
 			$case->setClosedAt($now);
 			$case->setClosedBy($actorUid);
 			$case->setCloseRequestedBy(null);
+			$case->setCloseRequestedTo(null);
 			// Retention clock starts at closure (spec §9: retention_until = closed_at + N).
 			$case->setRetentionUntil($this->deadlines->retentionUntil($now, $this->config->getInt('retention_months')));
-			$case->setRevision($revision + 1);
-			$this->cases->update($case);
+			$this->persist($case, $revision);
 			$this->audit->record($to === Wcase::STATUS_CLOSED ? 'case_closed' : 'case_archived', $actorUid, $caseId, ['from' => $from]);
 			return $case;
 		}
 
 		// Reopen: closed → in_review clears the closure stamp but keeps history in audit.
+		// Any stale pending terminal request must be cleared too — otherwise the
+		// next officer requesting closed/archived would count as an instant
+		// "second confirmation" of a request that no longer makes sense.
 		if ($from === Wcase::STATUS_CLOSED && $to === Wcase::STATUS_IN_REVIEW) {
 			$case->setClosedAt(null);
 			$case->setClosedBy(null);
 			$case->setRetentionUntil(null);
+			$case->setCloseRequestedBy(null);
+			$case->setCloseRequestedTo(null);
 		}
 		$case->setStatus($to);
-		$case->setRevision($revision + 1);
-		$this->cases->update($case);
+		$this->persist($case, $revision);
 		$this->audit->record('status_changed', $actorUid, $caseId, ['from' => $from, 'to' => $to]);
 		return $case;
 	}
@@ -447,8 +474,7 @@ class CaseService
 			}
 		}
 		$case->setAssignedTo($targetUid);
-		$case->setRevision($revision + 1);
-		$this->cases->update($case);
+		$this->persist($case, $revision);
 		$this->audit->record('case_assigned', $actorUid, $caseId, ['target_uid' => $targetUid ?? '']);
 		return $case;
 	}
@@ -469,8 +495,7 @@ class CaseService
 		$case->setLegalHold($hold ? 1 : 0);
 		$case->setHoldReason($hold ? ($reason !== null ? $this->sanitize->plainText($reason, 255) : null) : null);
 		$case->setHoldSetBy($hold ? $actorUid : null);
-		$case->setRevision($revision + 1);
-		$this->cases->update($case);
+		$this->persist($case, $revision);
 		$this->audit->record($hold ? 'hold_set' : 'hold_released', $actorUid, $caseId, ['flag' => $hold]);
 		return $case;
 	}
@@ -511,6 +536,7 @@ class CaseService
 			'revision' => $case->getRevision(),
 			'assigned_to' => $case->getAssignedTo(),
 			'close_requested_by' => $case->getCloseRequestedBy(),
+			'close_requested_to' => $case->getCloseRequestedTo(),
 			'legal_hold' => $case->getLegalHold() === 1,
 			'hold_reason' => $case->getHoldReason(),
 			'received_at' => $case->getReceivedAt()->format(\DateTime::ATOM),
@@ -548,6 +574,48 @@ class CaseService
 			'key_salt' => $case->getKeySalt(),
 			'messages' => $msgs,
 		];
+	}
+
+	/**
+	 * Fail-closed optimistic-lock write: the WHERE clause pins the revision the
+	 * caller checked, so a concurrent mutation turns into a 409 instead of a
+	 * silent last-writer-wins overwrite.
+	 */
+	private function persist(Wcase $case, int $expectedRevision): void
+	{
+		if ($this->cases->updateWithRevision($case, $expectedRevision) === 0) {
+			throw new ConflictException();
+		}
+	}
+
+	/**
+	 * Second officer confirms whatever terminal transition was requested —
+	 * the stored target, never a hardcoded one.
+	 */
+	public function confirmClose(int $caseId, int $revision, string $actorUid): Wcase
+	{
+		$case = $this->cases->find($caseId);
+		if ($case === null) {
+			throw new DomainException('not_found', 'Not found', 404);
+		}
+		$requester = $case->getCloseRequestedBy();
+		if ($requester === null) {
+			throw new DomainException('nothing_pending', 'No close request pending', 409);
+		}
+		if ($requester === $actorUid) {
+			throw new DomainException('second_officer_required', 'A second officer must confirm', 409);
+		}
+		// Legacy pending rows (pre-`close_requested_to`) targeted `closed`.
+		$target = $case->getCloseRequestedTo() ?? Wcase::STATUS_CLOSED;
+		if ($target === $case->getStatus()) {
+			// Moot pending request — already in the target state; clear the
+			// stale marker so the case isn't wedged.
+			$case->setCloseRequestedBy(null);
+			$case->setCloseRequestedTo(null);
+			$this->persist($case, $revision);
+			return $case;
+		}
+		return $this->setStatus($caseId, $target, $revision, $actorUid);
 	}
 
 	private function instanceSecret(): string

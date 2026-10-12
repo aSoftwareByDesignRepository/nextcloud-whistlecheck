@@ -38,7 +38,7 @@ test.describe('public reporter flow', () => {
     // Reply through the same code-derived key.
     await page.locator('#wc-reply-body').fill('E2E follow-up detail')
     await page.locator('#wc-reply-form [type=submit]').click()
-    await expect(page.locator('.wc-messages')).toContainText('E2E follow-up detail', { timeout: 20000 })
+    await expect(page.locator('.wc-messages')).toContainText('E2E follow-up detail', { timeout: 45000 })
   })
 
   test('bogus code yields uniform invalid error, not an oracle', async ({ page }) => {

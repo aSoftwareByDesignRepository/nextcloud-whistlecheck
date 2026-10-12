@@ -7,6 +7,7 @@ namespace OCA\WhistleCheck\Tests\Unit\Service;
 use OCA\WhistleCheck\Crypto\CaseCodeService;
 use OCA\WhistleCheck\Crypto\EnvelopeService;
 use OCA\WhistleCheck\Db\CategoryMapper;
+use OCA\WhistleCheck\Db\IdemKey;
 use OCA\WhistleCheck\Db\IdemKeyMapper;
 use OCA\WhistleCheck\Db\WattachmentMapper;
 use OCA\WhistleCheck\Db\Wcase;
@@ -36,6 +37,9 @@ final class CaseServiceTest extends TestCase
 	private OfficerKeyService&MockObject $officerKeys;
 	private ConfigService&MockObject $config;
 	private IUserManager&MockObject $users;
+	private DeadlineService&MockObject $deadlines;
+	private IdemKeyMapper&MockObject $idem;
+	private \OCP\IDBConnection&MockObject $db;
 	private CaseService $svc;
 
 	protected function setUp(): void
@@ -44,23 +48,31 @@ final class CaseServiceTest extends TestCase
 		$this->officerKeys = $this->createMock(OfficerKeyService::class);
 		$this->config = $this->createMock(ConfigService::class);
 		$this->users = $this->createMock(IUserManager::class);
+		// Mirror the real CAS write: bump the entity's revision and report 1
+		// affected row (0 would mean a concurrent write won → ConflictException).
+		$this->deadlines = $this->createMock(DeadlineService::class);
+		$this->idem = $this->createMock(IdemKeyMapper::class);
+		$this->db = $this->createMock(IDBConnection::class);
+		$this->cases->method('updateWithRevision')->willReturnCallback(
+			fn (Wcase $c, int $rev) => ($c->setRevision($rev + 1) ?? 1));
+
 		$this->svc = new CaseService(
 			$this->cases,
 			$this->createMock(WmessageMapper::class),
 			$this->createMock(WattachmentMapper::class),
 			$this->createMock(WnoteMapper::class),
-			$this->createMock(IdemKeyMapper::class),
+			$this->idem,
 			$this->createMock(CategoryMapper::class),
 			new CaseCodeService(),
 			new EnvelopeService(),
-			$this->createMock(DeadlineService::class),
+			$this->deadlines,
 			$this->config,
 			$this->createMock(AttachmentService::class),
 			$this->officerKeys,
 			$this->createMock(AuditService::class),
 			$this->createMock(NotificationService::class),
 			new SanitizeService(),
-			$this->createMock(IDBConnection::class),
+			$this->db,
 			$this->users,
 			$this->createMock(IConfig::class),
 		);
@@ -81,7 +93,7 @@ final class CaseServiceTest extends TestCase
 	{
 		$case = $this->case(Wcase::STATUS_RECEIVED, 0);
 		$this->cases->method('find')->willReturn($case);
-		$this->cases->expects($this->once())->method('update');
+		$this->cases->expects($this->once())->method('updateWithRevision')->willReturnCallback(fn (Wcase $c, int $r) => ($c->setRevision($r + 1) ?? 1));
 		$out = $this->svc->setStatus(1, Wcase::STATUS_IN_REVIEW, 0, 'officer');
 		$this->assertSame(Wcase::STATUS_IN_REVIEW, $out->getStatus());
 		$this->assertSame(1, $out->getRevision());
@@ -158,12 +170,14 @@ final class CaseServiceTest extends TestCase
 		// Not closed yet — pending
 		$this->assertSame(Wcase::STATUS_IN_REVIEW, $out->getStatus());
 		$this->assertSame('officer1', $out->getCloseRequestedBy());
+		$this->assertSame(Wcase::STATUS_CLOSED, $out->getCloseRequestedTo());
 	}
 
 	public function testTwoPersonCloseSameOfficerRejected(): void
 	{
 		$case = $this->case(Wcase::STATUS_IN_REVIEW, 1);
 		$case->setCloseRequestedBy('officer1');
+		$case->setCloseRequestedTo(Wcase::STATUS_CLOSED);
 		$this->cases->method('find')->willReturn($case);
 		$this->officerKeys->method('activePubkeys')->willReturn(['o1' => 'a', 'o2' => 'b']);
 		$this->expectException(DomainException::class);
@@ -179,6 +193,7 @@ final class CaseServiceTest extends TestCase
 	{
 		$case = $this->case(Wcase::STATUS_IN_REVIEW, 1);
 		$case->setCloseRequestedBy('officer1');
+		$case->setCloseRequestedTo(Wcase::STATUS_CLOSED);
 		$this->cases->method('find')->willReturn($case);
 		$this->officerKeys->method('activePubkeys')->willReturn(['o1' => 'a', 'o2' => 'b']);
 		$deadline = $this->createMock(DeadlineService::class);
@@ -189,7 +204,7 @@ final class CaseServiceTest extends TestCase
 			$this->createMock(WmessageMapper::class),
 			$this->createMock(WattachmentMapper::class),
 			$this->createMock(WnoteMapper::class),
-			$this->createMock(IdemKeyMapper::class),
+			$this->idem,
 			$this->createMock(CategoryMapper::class),
 			new CaseCodeService(),
 			new EnvelopeService(),
@@ -200,7 +215,7 @@ final class CaseServiceTest extends TestCase
 			$this->createMock(AuditService::class),
 			$this->createMock(NotificationService::class),
 			new SanitizeService(),
-			$this->createMock(IDBConnection::class),
+			$this->db,
 			$this->users,
 			$this->createMock(IConfig::class),
 		);
@@ -212,6 +227,103 @@ final class CaseServiceTest extends TestCase
 		$this->assertEquals(new \DateTime('2029-01-01'), $out->getRetentionUntil());
 	}
 
+	public function testPendingArchiveCannotBeConfirmedAsClosed(): void
+	{
+		// An `archived` request must not be confirmable as `closed` — the
+		// stored target rules.
+		$case = $this->case(Wcase::STATUS_IN_REVIEW, 1);
+		$case->setCloseRequestedBy('officer1');
+		$case->setCloseRequestedTo(Wcase::STATUS_ARCHIVED);
+		$this->cases->method('find')->willReturn($case);
+		$this->officerKeys->method('activePubkeys')->willReturn(['o1' => 'a', 'o2' => 'b']);
+		$this->expectException(DomainException::class);
+		try {
+			$this->svc->setStatus(1, Wcase::STATUS_CLOSED, 1, 'officer2');
+		} catch (DomainException $e) {
+			$this->assertSame('pending_mismatch', $e->errorCode);
+			throw $e;
+		}
+	}
+
+	public function testConfirmCloseAppliesStoredTarget(): void
+	{
+		// Pending target is `archived` → confirmClose must archive, not close.
+		$case = $this->case(Wcase::STATUS_IN_REVIEW, 1);
+		$case->setCloseRequestedBy('officer1');
+		$case->setCloseRequestedTo(Wcase::STATUS_ARCHIVED);
+		$this->cases->method('find')->willReturn($case);
+		$this->officerKeys->method('activePubkeys')->willReturn(['o1' => 'a', 'o2' => 'b']);
+		$this->config->method('getInt')->willReturn(36);
+		$this->deadlines->method('retentionUntil')->willReturn(new \DateTime('2029-01-01'));
+		$out = $this->svc->confirmClose(1, 1, 'officer2');
+		$this->assertSame(Wcase::STATUS_ARCHIVED, $out->getStatus());
+		$this->assertNull($out->getCloseRequestedBy());
+		$this->assertNull($out->getCloseRequestedTo());
+	}
+
+	public function testConfirmCloseLegacyNullTargetAppliesClosed(): void
+	{
+		// Rows written before `close_requested_to` existed have by=<uid>,
+		// to=NULL — the old confirm path applied `closed`, so NULL must
+		// still confirm as `closed` rather than deadlocking the case.
+		$case = $this->case(Wcase::STATUS_IN_REVIEW, 1);
+		$case->setCloseRequestedBy('officer1');
+		$case->setCloseRequestedTo(null);
+		$this->cases->method('find')->willReturn($case);
+		$this->officerKeys->method('activePubkeys')->willReturn(['o1' => 'a', 'o2' => 'b']);
+		$this->deadlines->method('retentionUntil')->willReturn(new \DateTime('2029-01-01'));
+		$out = $this->svc->confirmClose(1, 1, 'officer2');
+		$this->assertSame(Wcase::STATUS_CLOSED, $out->getStatus());
+	}
+
+	public function testConfirmCloseNothingPending(): void
+	{
+		$case = $this->case(Wcase::STATUS_IN_REVIEW, 1);
+		$this->cases->method('find')->willReturn($case);
+		$this->expectException(DomainException::class);
+		try {
+			$this->svc->confirmClose(1, 1, 'officer2');
+		} catch (DomainException $e) {
+			$this->assertSame('nothing_pending', $e->errorCode);
+			throw $e;
+		}
+	}
+
+	// --- idempotent submit -------------------------------------------------
+
+	public function testSubmitReplayReturnsExistingCase(): void
+	{
+		$existing = new IdemKey();
+		$existing->setCaseId(42);
+		$this->idem->method('findByKey')->willReturn($existing);
+		$out = $this->svc->submit(['ikey' => 'replay-key-123'], true);
+		$this->assertSame(42, $out['case_id']);
+	}
+
+	public function testSubmitUniqueViolationReturnsExisting(): void
+	{
+		// Two concurrent submits with the same ikey: the loser's INSERT hits
+		// the unique index → catch, re-read, return the winner's case id.
+		$existing = new IdemKey();
+		$existing->setCaseId(77);
+		$this->idem->method('findByKey')->willReturnOnConsecutiveCalls(null, $existing);
+		$this->cases->method('insert')->willThrowException(new \OCP\DB\Exception('dup', 0, null));
+
+		$env = new EnvelopeService();
+		$payload = [
+			'ikey' => 'race-key-123456',
+			'hint' => str_repeat('a', 64),
+			'verifier' => str_repeat('b', 64),
+			'code_salt' => str_repeat('c', 32),
+			'key_salt' => str_repeat('d', 32),
+			'reporter_wrap' => $env->seal('k', $env->randomKey()),
+			'body' => $env->seal('body', $env->randomKey()),
+			'wraps' => [['uid' => 'o1', 'wrap' => $env->seal('w', $env->randomKey())]],
+		];
+		$out = $this->svc->submit($payload, true);
+		$this->assertSame(77, $out['case_id']);
+	}
+
 	// --- reopen -----------------------------------------------------------
 
 	public function testReopenClearsClosureStamp(): void
@@ -220,12 +332,16 @@ final class CaseServiceTest extends TestCase
 		$case->setClosedAt(new \DateTime());
 		$case->setClosedBy('o1');
 		$case->setRetentionUntil(new \DateTime('2029-01-01'));
+		$case->setCloseRequestedBy('o1');
+		$case->setCloseRequestedTo(Wcase::STATUS_ARCHIVED);
 		$this->cases->method('find')->willReturn($case);
 		$out = $this->svc->setStatus(1, Wcase::STATUS_IN_REVIEW, 3, 'officer');
 		$this->assertSame(Wcase::STATUS_IN_REVIEW, $out->getStatus());
 		$this->assertNull($out->getClosedAt());
 		$this->assertNull($out->getClosedBy());
 		$this->assertNull($out->getRetentionUntil());
+		$this->assertNull($out->getCloseRequestedBy());
+		$this->assertNull($out->getCloseRequestedTo());
 	}
 
 	// --- assign -----------------------------------------------------------

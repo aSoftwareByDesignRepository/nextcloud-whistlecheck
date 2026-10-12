@@ -3,7 +3,8 @@
 declare(strict_types=1);
 ?>
 <div id="content" class="wc-public" data-wc-page="code">
-	<main class="wc-public-main" id="main-content">
+		<a class="wc-skip" href="#main-content"><?php p($l->t('Skip to content')); ?></a>
+<main class="wc-public-main" id="main-content">
 		<section class="wc-code-panel" tabindex="-1" autofocus>
 			<h1><?php p($l->t('Report received')); ?></h1>
 			<?php if (empty($_['e2e'])): ?>

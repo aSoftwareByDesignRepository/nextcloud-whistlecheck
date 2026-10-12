@@ -247,3 +247,43 @@
 @media (prefers-reduced-motion: reduce) {
 	.wc-app *, .wc-public * { transition: none !important; animation: none !important; }
 }
+
+.wc-pending-close {
+	background: var(--color-warning);
+	color: var(--color-warning-text, #000);
+	border-radius: var(--border-radius);
+	padding: 10px 14px;
+	font-weight: 600;
+}
+
+.wc-skip-link {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+.wc-skip-link:focus,
+.wc-skip-link:focus-visible {
+	position: absolute;
+	left: 16px;
+	top: 16px;
+	width: auto;
+	height: auto;
+	margin: 0;
+	clip: auto;
+	clip-path: none;
+	white-space: normal;
+	overflow: visible;
+	z-index: 10000;
+	background: var(--color-primary-element);
+	color: var(--color-primary-element-text);
+	padding: 8px 16px;
+	border-radius: var(--border-radius);
+	font-weight: 600;
+}

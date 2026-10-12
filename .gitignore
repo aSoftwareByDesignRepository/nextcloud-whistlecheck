@@ -4,6 +4,6 @@
 /test-results/
 /playwright-report/
 /.phpunit.result.cache
-/.auth/
+**/.auth/
 /e2e/.env
 docs/private/

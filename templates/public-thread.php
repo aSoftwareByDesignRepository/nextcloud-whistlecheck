@@ -7,7 +7,8 @@ $view = $_['view'] ?? ['messages' => []];
 <div id="content" class="wc-public" data-wc-page="thread"
 	data-wc-api-base="<?php p($_['api_base'] ?? ''); ?>"
 	data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>">
-	<main class="wc-public-main" id="main-content">
+		<a class="wc-skip" href="#main-content"><?php p($l->t('Skip to content')); ?></a>
+<main class="wc-public-main" id="main-content">
 		<h1><?php p($l->t('Your case')); ?></h1>
 		<?php if (empty($view['e2e'])): ?>
 			<p class="wc-honesty" role="note"><?php p($l->t('Decrypted on the server (JavaScript off).')); ?></p>

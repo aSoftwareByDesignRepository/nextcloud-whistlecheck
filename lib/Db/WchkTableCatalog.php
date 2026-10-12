@@ -41,6 +41,17 @@ final class WchkTableCatalog
 	];
 
 	/**
+	 * Columns added by post-initial migrations. The schema repair step verifies
+	 * them so a migration marked complete without effect is reported, not
+	 * silently tolerated.
+	 *
+	 * @var array<string, list<string>>
+	 */
+	public const REQUIRED_COLUMNS = [
+		'wchk_cases' => ['close_requested_to'],
+	];
+
+	/**
 	 * @return list<string>
 	 */
 	public static function requiredTables(): array

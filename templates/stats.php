@@ -2,8 +2,9 @@
 /** @var \OCP\IL10N $l */
 declare(strict_types=1);
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>" data-wc-page="stats">
-	<div class="wc-app-wrap">
+<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>
+	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>" data-wc-page="stats">
+	<div class="wc-app-wrap" id="wc-main">
 		<h1><?php p($l->t('Statistics')); ?></h1>
 		<p><?php p($l->t('Total cases:')); ?> <strong data-wc-total>0</strong>
 			· <?php p($l->t('Overdue:')); ?> <strong data-wc-overdue>0</strong></p>

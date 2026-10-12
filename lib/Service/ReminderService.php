@@ -39,7 +39,9 @@ class ReminderService
 
 		foreach ($this->cases->findDueSoon($today, $days) as $case) {
 			$case->setReminderSentAt(new \DateTime('now', new \DateTimeZone('UTC')));
-			$this->cases->update($case);
+			if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
+				continue; // officer mutated concurrently — next run re-detects
+			}
 			$this->notify->notifyOfficers('wchk.due_soon', $case->getId());
 			$this->audit->record('reminder_sent', null, $case->getId(), ['days' => $days]);
 			$reminded++;
@@ -48,7 +50,9 @@ class ReminderService
 		$escalationUid = $this->config->get('escalation_uid');
 		foreach ($this->cases->findOverdue($today) as $case) {
 			$case->setOverdueNotifiedAt(new \DateTime('now', new \DateTimeZone('UTC')));
-			$this->cases->update($case);
+			if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
+				continue;
+			}
 			$this->notify->notifyOfficers('wchk.overdue', $case->getId());
 			if ($escalationUid !== '') {
 				$this->notify->notifyUids([$escalationUid], 'wchk.overdue_escalation', $case->getId());

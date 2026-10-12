@@ -45,6 +45,7 @@ class Application extends App implements IBootstrap
 		$context->registerService(EnsureWhistleCheckSchema::class, function ($c): EnsureWhistleCheckSchema {
 			return new EnsureWhistleCheckSchema(
 				$c->get(IDBConnection::class),
+				$c->get(IConfig::class),
 			);
 		});
 		$context->registerService(EnsureWhistleCheckDefaults::class, function ($c): EnsureWhistleCheckDefaults {

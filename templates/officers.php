@@ -2,9 +2,10 @@
 /** @var \OCP\IL10N $l */
 declare(strict_types=1);
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>" data-wc-page="officers"
+<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>
+	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>" data-wc-page="officers"
 	data-wc-uid="<?php p($_['wc_uid'] ?? ''); ?>">
-	<div class="wc-app-wrap">
+	<div class="wc-app-wrap" id="wc-main">
 		<h1><?php p($l->t('Case officers')); ?></h1>
 		<section data-wc-keyreg hidden class="wc-panel">
 			<h2><?php p($l->t('Set up your key')); ?></h2>

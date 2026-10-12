@@ -117,6 +117,14 @@ class OfficerKeyService
 		$target->setRevokedBy($actorUid);
 		$this->officers->update($target);
 		$this->wraps->deleteForOfficer($targetUid);
+		// Eject from the officer group — `isOfficer` is the group's only gate,
+		// so without this a revoked officer keeps full API access and could
+		// even re-register a key to revive themselves.
+		$group = $this->groupManager->get(self::GROUP);
+		$user = $this->userManager->get($targetUid);
+		if ($group !== null && $user !== null && $group->inGroup($user)) {
+			$group->removeUser($user);
+		}
 		$this->audit->record('officer_revoked', $actorUid, null, ['target_uid' => $targetUid]);
 	}
 

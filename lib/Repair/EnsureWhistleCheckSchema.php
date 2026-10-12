@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\WhistleCheck\Repair;
 
 use OCA\WhistleCheck\Db\WchkTableCatalog;
+use OCP\IConfig;
 use OCP\IDBConnection;
 use OCP\Migration\IOutput;
 use OCP\Migration\IRepairStep;
@@ -23,6 +24,7 @@ class EnsureWhistleCheckSchema implements IRepairStep
 {
 	public function __construct(
 		private readonly IDBConnection $db,
+		private readonly IConfig $config,
 	) {
 	}
 
@@ -43,6 +45,26 @@ class EnsureWhistleCheckSchema implements IRepairStep
 			$output->warning('WhistleCheck: missing tables: ' . implode(', ', $missing));
 			return;
 		}
+
+		$schema = $this->db->createSchema();
+		$prefix = $this->config->getSystemValueString('dbtableprefix', 'oc_');
+		$missingCols = [];
+		foreach (WchkTableCatalog::REQUIRED_COLUMNS as $table => $columns) {
+			if (!$schema->hasTable($prefix . $table)) {
+				continue;
+			}
+			$t = $schema->getTable($prefix . $table);
+			foreach ($columns as $column) {
+				if (!$t->hasColumn($column)) {
+					$missingCols[] = $table . '.' . $column;
+				}
+			}
+		}
+		if ($missingCols !== []) {
+			$output->warning('WhistleCheck: missing columns: ' . implode(', ', $missingCols));
+			return;
+		}
+
 		$output->info('WhistleCheck: schema complete (' . count(WchkTableCatalog::requiredTables()) . ' tables)');
 	}
 }

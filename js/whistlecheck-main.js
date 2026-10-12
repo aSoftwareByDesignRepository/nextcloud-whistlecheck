@@ -189,6 +189,7 @@
 			return;
 		}
 		root.dataset.revision = data.revision;
+		renderClosePending(data.close_requested_by, data.close_requested_to, me);
 
 		if (data.title_cipher) {
 			const title = await window.WcCrypto.open(data.title_cipher, caseKey);
@@ -284,6 +285,19 @@
 			});
 		}
 
+		function renderClosePending(by, to, me) {
+			const el = root.querySelector('[data-wc-close-pending]');
+			if (!el) return;
+			if (!by) { el.hidden = true; return; }
+			el.hidden = false;
+			const label = t('status_' + to, to);
+			const raw = by === me
+				? t('close_pending_self', '"{t}" requested — a second officer must confirm.')
+				: t('close_pending_other', '"{t}" requested by {by} — click the same button to confirm.');
+			el.querySelector('[data-wc-close-pending-text]').textContent =
+				raw.replace('{t}', label).replace('{by}', by);
+		}
+
 		root.querySelectorAll('[data-wc-status]').forEach((btn) => {
 			btn.addEventListener('click', async () => {
 				try {
@@ -291,7 +305,8 @@
 					refreshRev(res);
 					const badge = root.querySelector('[data-wc-status-badge]');
 					if (badge) { badge.textContent = t('status_' + res.status, res.status); badge.className = 'wc-status wc-status-' + res.status; }
-					toast('success', t('status_saved', 'Status updated.'));
+					renderClosePending(res.close_requested_by, res.close_requested_to, me);
+					toast('success', res.close_requested_by ? t('close_pending_toast', 'Request recorded — a second officer must confirm.') : t('status_saved', 'Status updated.'));
 				} catch (e) {
 					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
 					else toast('error', e.message);

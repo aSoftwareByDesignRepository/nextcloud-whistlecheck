@@ -69,7 +69,9 @@ class RetentionService
 
 		foreach ($this->cases->findRetentionOpenExpired($today) as $case) {
 			$case->setRetentionWarned(1);
-			$this->cases->update($case);
+			if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
+				continue; // concurrent write wins — warning stays due, retried next run
+			}
 			$this->notify->notifyOfficers('wchk.retention_due', $case->getId());
 			$this->audit->record('retention_warned', null, $case->getId(), []);
 			$warned++;

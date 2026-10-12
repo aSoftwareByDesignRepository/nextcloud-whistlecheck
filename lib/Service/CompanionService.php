@@ -77,6 +77,11 @@ class CompanionService
 		}
 		$want = hash('sha256', $token);
 		foreach ($this->officerMapper->findActive() as $o) {
+			// Row status alone is not enough: an admin can eject an officer from
+			// the group directly (bypassing revoke()). Both must hold.
+			if (!$this->officers->isOfficer($o->getUid())) {
+				continue;
+			}
 			foreach ($this->devices($o->getUid()) as $id => $d) {
 				if (hash_equals((string)$d['hash'], $want)) {
 					return $o->getUid() . '|' . $id;
@@ -84,6 +89,15 @@ class CompanionService
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Wipe all paired devices for a revoked officer — their tokens must not
+	 * silently reactivate if the uid is ever re-registered.
+	 */
+	public function purgeOfficerDevices(string $uid): void
+	{
+		$this->appConfig->deleteKey('whistlecheck', 'devices_' . $uid);
 	}
 
 	/**

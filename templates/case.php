@@ -2,14 +2,18 @@
 /** @var \OCP\IL10N $l */
 declare(strict_types=1);
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>" data-wc-page="case" data-wc-case-id="<?php p((string)($_['caseId'] ?? 0)); ?>"
+<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>
+	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>" data-wc-page="case" data-wc-case-id="<?php p((string)($_['caseId'] ?? 0)); ?>"
 	data-wc-uid="<?php p($_['wc_uid'] ?? ''); ?>"
 	data-wc-officers="<?php p(json_encode($_['officers'] ?? [])); ?>"
 	data-wc-revision="0">
-	<div class="wc-app-wrap">
+	<div class="wc-app-wrap" id="wc-main">
 		<nav aria-label="breadcrumb"><a href="<?php p($_['urlGenerator']->linkToRoute('whistlecheck.page.inbox')); ?>">← <?php p($l->t('Inbox')); ?></a></nav>
 		<h1 class="wc-case-title"><?php p($l->t('Case')); ?> #<?php p((string)($_['caseId'] ?? 0)); ?></h1>
 		<p><?php p($l->t('Status:')); ?> <strong class="wc-status" data-wc-status-badge></strong></p>
+		<p class="wc-pending-close" data-wc-close-pending role="status" hidden>
+			<span data-wc-close-pending-text></span>
+		</p>
 
 		<div class="wc-status-actions" role="group" aria-label="<?php p($l->t('Set status')); ?>">
 			<?php foreach (['in_review', 'action_taken', 'closed', 'archived'] as $s): ?>
