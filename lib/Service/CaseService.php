@@ -12,6 +12,7 @@ namespace OCA\WhistleCheck\Service;
 use OCA\WhistleCheck\Crypto\CaseCodeService;
 use OCA\WhistleCheck\Crypto\EnvelopeService;
 use OCA\WhistleCheck\Db\CategoryMapper;
+use OCA\WhistleCheck\Db\CaseKeyWrapMapper;
 use OCA\WhistleCheck\Db\IdemKey;
 use OCA\WhistleCheck\Db\IdemKeyMapper;
 use OCA\WhistleCheck\Db\Wattachment;
@@ -91,6 +92,7 @@ class CaseService
 		private readonly IDBConnection $db,
 		private readonly IUserManager $userManager,
 		private readonly IConfig $config0,
+		private readonly CaseKeyWrapMapper $wraps,
 	) {
 	}
 
@@ -609,6 +611,12 @@ class CaseService
 			'retention_until' => $case->getRetentionUntil()?->format('Y-m-d'),
 			'category_id' => $case->getCategoryId(),
 			'created_e2e' => $case->getCreatedE2e() === 1,
+			// Officers holding a case-key wrap — lets a decrypting officer see
+			// who lost access (rotation without re-wrap) and re-grant them.
+			'granted_to' => array_map(
+				static fn ($w) => $w->getOfficerUid(),
+				$this->wraps->findForCase($case->getId()),
+			),
 			'title_cipher' => $case->getTitleCipher(),
 			'contact_cipher' => $case->getContactCipher(),
 			'messages' => $msgs,

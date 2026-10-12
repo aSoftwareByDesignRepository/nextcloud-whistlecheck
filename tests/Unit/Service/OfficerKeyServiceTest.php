@@ -75,27 +75,60 @@ final class OfficerKeyServiceTest extends TestCase
 	public function testStoreWrapsRejectsOverwriteOfExistingWrap(): void
 	{
 		$target = $this->activeOfficer('o2');
-		$this->officers->method('findActive')->willReturn([$target]);
+		$this->officers->method('findByUidForUpdate')->willReturn($target);
 		$this->wraps->method('findForCaseAndOfficer')->willReturn(new CaseKeyWrap());
 		$this->wraps->expects($this->never())->method('update');
 		$this->expectException(ValidationException::class);
-		$this->svc->storeWraps(7, ['o2' => $this->sealedbox()], 'o1');
+		$this->svc->storeWraps(7, ['o2' => ['wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o1');
 	}
 
 	public function testStoreWrapsInsertsForWraplessOfficer(): void
 	{
 		$target = $this->activeOfficer('o2');
-		$this->officers->method('findActive')->willReturn([$target]);
+		$this->officers->method('findByUidForUpdate')->willReturn($target);
 		$this->wraps->method('findForCaseAndOfficer')->willReturn(null);
 		$this->wraps->expects($this->once())->method('insert');
-		$this->svc->storeWraps(7, ['o2' => $this->sealedbox()], 'o1');
+		$this->svc->storeWraps(7, ['o2' => ['wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o1');
 	}
 
 	public function testStoreWrapsRejectsRevokedOrForeignUid(): void
 	{
-		$this->officers->method('findActive')->willReturn([$this->activeOfficer('o1')]);
+		$this->officers->method('findByUidForUpdate')->willReturn(null);
 		$this->expectException(ValidationException::class);
-		$this->svc->storeWraps(7, ['ghost' => $this->sealedbox()], 'o1');
+		$this->svc->storeWraps(7, ['ghost' => ['wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o1');
+	}
+
+	public function testStoreWrapsRejectsMissingFingerprint(): void
+	{
+		$this->officers->method('findByUidForUpdate')->willReturn($this->activeOfficer('o2'));
+		$this->expectException(ValidationException::class);
+		$this->svc->storeWraps(7, ['o2' => ['wrap' => $this->sealedbox()]], 'o1');
+	}
+
+	public function testStoreWrapsRejectsStaleFingerprint(): void
+	{
+		// Wrap was sealed to a key that has since rotated — a 409 tells the
+		// client to refetch pubkeys and re-seal, never a silent dead wrap.
+		$target = $this->activeOfficer('o2');
+		$target->setFingerprint('new-fp');
+		$this->officers->method('findByUidForUpdate')->willReturn($target);
+		$this->wraps->expects($this->never())->method('insert');
+		try {
+			$this->svc->storeWraps(7, ['o2' => ['wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o1');
+			$this->fail('expected stale-key rejection');
+		} catch (\OCA\WhistleCheck\Exception\DomainException $e) {
+			$this->assertSame('stale_officer_key', $e->errorCode);
+			$this->assertSame(409, $e->httpStatus);
+		}
+	}
+
+	public function testStoreWrapsAcceptsListWireForm(): void
+	{
+		$target = $this->activeOfficer('o2');
+		$this->officers->method('findByUidForUpdate')->willReturn($target);
+		$this->wraps->method('findForCaseAndOfficer')->willReturn(null);
+		$this->wraps->expects($this->once())->method('insert');
+		$this->svc->storeWraps(7, [['uid' => 'o2', 'wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o1');
 	}
 
 	// ── rotation ────────────────────────────────────────────────────────

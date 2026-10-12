@@ -13,6 +13,7 @@ use OCA\WhistleCheck\Db\CategoryMapper;
 use OCA\WhistleCheck\Service\AttachmentService;
 use OCA\WhistleCheck\Service\CaseService;
 use OCA\WhistleCheck\Service\ConfigService;
+use OCA\WhistleCheck\Service\OfficerKeyService;
 use OCA\WhistleCheck\Service\PowService;
 use OCA\WhistleCheck\Service\RateLimitService;
 use OCP\AppFramework\Controller;
@@ -42,6 +43,7 @@ class PublicApiController extends Controller
 		private readonly ConfigService $config,
 		private readonly CategoryMapper $categories,
 		private readonly AttachmentService $attachmentPolicy,
+		private readonly OfficerKeyService $officerKeys,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -65,6 +67,13 @@ class PublicApiController extends Controller
 				'max_attachment_mb' => $this->config->getInt('max_attachment_mb'),
 				'welcome' => $this->config->get('welcome_text'),
 				'org' => $this->config->get('org_name'),
+				// Live officer set — submit retries on STALE_OFFICER_KEY
+				// re-seal wraps against this fresh snapshot.
+				'officers' => array_map(static fn ($o) => [
+					'uid' => $o['uid'],
+					'pubkey' => $o['pubkey'],
+					'fp' => $o['fingerprint'],
+				], $this->officerKeys->activePubkeys()),
 				'e2e' => true,
 			]);
 		} catch (\Throwable $e) {

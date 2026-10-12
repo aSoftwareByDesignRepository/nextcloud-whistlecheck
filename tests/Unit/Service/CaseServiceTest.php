@@ -81,6 +81,7 @@ final class CaseServiceTest extends TestCase
 			$this->db,
 			$this->users,
 			$this->createMock(IConfig::class),
+			$this->createMock(\OCA\WhistleCheck\Db\CaseKeyWrapMapper::class),
 		);
 	}
 
@@ -224,6 +225,7 @@ final class CaseServiceTest extends TestCase
 			$this->db,
 			$this->users,
 			$this->createMock(IConfig::class),
+			$this->createMock(\OCA\WhistleCheck\Db\CaseKeyWrapMapper::class),
 		);
 		$this->config->method('getInt')->willReturn(36);
 		$out = $svc->setStatus(1, Wcase::STATUS_CLOSED, 1, 'officer2');

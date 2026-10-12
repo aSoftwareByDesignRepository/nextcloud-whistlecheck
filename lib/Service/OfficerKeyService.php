@@ -193,35 +193,74 @@ class OfficerKeyService
 	}
 
 	/**
-	 * Store client-produced wraps (content key sealed to each officer). Only
-	 * uids in the ACTIVE set are accepted — anything else is rejected outright
-	 * so a malicious client cannot smuggle a wrap to a revoked/foreign uid.
+	 * Store client-produced wraps (content key sealed to each officer). Every
+	 * entry must carry the `fp` (fingerprint) of the officer public key it
+	 * was sealed to: the check runs as a FOR UPDATE read inside a
+	 * transaction, so it serializes against a concurrent rotation's row
+	 * UPDATE — a wrap sealed to a soon-dead key can never land (it would be
+	 * a permanently unreadable case for that officer; sole-officer installs
+	 * would lose the report entirely). Stale fp → 409 so the client
+	 * re-fetches pubkeys, re-seals and retries.
 	 *
-	 * @param array<string,string> $wrapsByUid uid → sealed-box envelope JSON
-	 * @throws ValidationException
+	 * Wire forms: list of {uid, wrap, fp} or map uid => {wrap, fp}.
+	 * Lock order is sorted by uid so two concurrent writes cannot deadlock.
+	 *
+	 * @throws ValidationException|DomainException
 	 */
 	public function storeWraps(int $caseId, array $wraps, ?string $grantedBy): void
 	{
-		// Wire form is a list of {uid, wrap}; normalize to uid => envelope.
+		$ownTx = !$this->db->inTransaction();
+		if ($ownTx) {
+			$this->db->beginTransaction();
+		}
+		try {
+			$this->storeWrapsLocked($caseId, $wraps, $grantedBy);
+			if ($ownTx) {
+				$this->db->commit();
+			}
+		} catch (\Throwable $e) {
+			if ($ownTx) {
+				$this->db->rollBack();
+			}
+			throw $e;
+		}
+	}
+
+	private function storeWrapsLocked(int $caseId, array $wraps, ?string $grantedBy): void
+	{
+		// Normalize wire forms to uid => {wrap, fp}.
 		$wrapsByUid = [];
 		foreach ($wraps as $key => $entry) {
 			if (is_int($key) && is_array($entry)) {
 				$uid = (string)($entry['uid'] ?? '');
-				$wrapsByUid[$uid] = $entry['wrap'] ?? null;
+				$wrapsByUid[$uid] = ['wrap' => $entry['wrap'] ?? null, 'fp' => $entry['fp'] ?? null];
 			} else {
-				$wrapsByUid[(string)$key] = $entry;
+				$wrapsByUid[(string)$key] = is_array($entry)
+					? ['wrap' => $entry['wrap'] ?? null, 'fp' => $entry['fp'] ?? null]
+					: ['wrap' => $entry, 'fp' => null];
 			}
 		}
-		$active = array_column($this->activePubkeys(), 'uid');
-		foreach ($wrapsByUid as $uid => $envelopeJson) {
-			if (!in_array($uid, $active, true)) {
+		ksort($wrapsByUid, SORT_STRING); // deterministic lock order
+		foreach ($wrapsByUid as $uid => $entry) {
+			$envelopeJson = $entry['wrap'];
+			$fp = $entry['fp'];
+			// FOR UPDATE: sees the post-rotation fingerprint even when this
+			// transaction's consistent snapshot predates the rotation commit.
+			$officer = $this->officers->findByUidForUpdate((string)$uid);
+			if ($officer === null || $officer->getStatus() !== Officer::STATUS_ACTIVE) {
 				throw new ValidationException('invalid_wrap', 'Wrap for unknown officer', ['officers' => 'unknown officer']);
+			}
+			if (!is_string($fp) || $fp === '') {
+				throw new ValidationException('invalid_wrap', 'Missing key fingerprint', ['officers' => 'missing fingerprint']);
+			}
+			if (!hash_equals($officer->getFingerprint(), $fp)) {
+				throw new DomainException('stale_officer_key', 'Officer key changed — refresh and retry', 409);
 			}
 			if (!is_string($envelopeJson) || !$this->envelope->isValidEnvelope($envelopeJson, EnvelopeService::ALG_SEALEDBOX)) {
 				throw new ValidationException('invalid_wrap', 'Invalid wrapped key', ['officers' => 'invalid wrap']);
 			}
 		}
-		foreach ($wrapsByUid as $uid => $envelopeJson) {
+		foreach ($wrapsByUid as $uid => $entry) {
 			$existing = $this->wraps->findForCaseAndOfficer($caseId, (string)$uid);
 			if ($existing !== null) {
 				// Never clobber a live wrap: the server cannot verify sealed-box
@@ -234,7 +273,7 @@ class OfficerKeyService
 			$wrap = new \OCA\WhistleCheck\Db\CaseKeyWrap();
 			$wrap->setCaseId($caseId);
 			$wrap->setOfficerUid((string)$uid);
-			$wrap->setWrappedKey($envelopeJson);
+			$wrap->setWrappedKey($entry['wrap']);
 			$wrap->setGrantedBy($grantedBy);
 			$wrap->setGrantedAt(new \DateTime('now', new \DateTimeZone('UTC')));
 			$this->wraps->insert($wrap);

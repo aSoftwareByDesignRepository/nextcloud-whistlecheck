@@ -69,6 +69,12 @@ $_['wc_nav_current'] = 'cases';
 			<button type="submit" class="wc-btn-primary"><?php p($l->t('Send (encrypted)')); ?></button>
 		</form>
 
+		<section class="wc-panel" data-wc-grant hidden aria-labelledby="wc-grant-heading">
+			<h2 id="wc-grant-heading"><?php p($l->t('Grant access')); ?></h2>
+			<p class="wc-hint"><?php p($l->t('These officers can no longer read this case (for example after a key change without re-encryption). Granting re-seals the case key to their current key.')); ?></p>
+			<ul class="wc-grant-list" data-wc-grant-list></ul>
+		</section>
+
 		<h2><?php p($l->t('Internal notes')); ?></h2>
 		<ul data-wc-notes class="wc-notes"></ul>
 		<form data-wc-note-form>

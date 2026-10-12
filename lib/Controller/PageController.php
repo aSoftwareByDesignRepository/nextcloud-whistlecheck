@@ -190,6 +190,8 @@ class PageController extends Controller
 			'status_saved' => $this->l->t('Status updated.'),
 			'settings_saved' => $this->l->t('Settings saved.'),
 			'note_added' => $this->l->t('Note saved.'),
+			'grant_btn' => $this->l->t('Grant access'),
+			'grant_done' => $this->l->t('Access granted.'),
 			'hold_saved' => $this->l->t('Saved.'),
 			'assigned' => $this->l->t('Assignment saved.'),
 			'chain_ok' => $this->l->t('Chain intact'),

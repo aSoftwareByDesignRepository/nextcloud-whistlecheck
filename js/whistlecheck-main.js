@@ -525,6 +525,59 @@
 			});
 		}
 
+		// ── re-grant: officers who lost access (rotation without re-wrap) ──
+		const grantSec = root.querySelector('[data-wc-grant]');
+		const grantList = root.querySelector('[data-wc-grant-list]');
+		if (grantSec && grantList) {
+			let officers = [];
+			try { officers = JSON.parse(boot().wcOfficers || '[]'); } catch (e) { officers = []; }
+			const holders = new Set(data.granted_to || []);
+			for (const o of officers) {
+				if (!o.uid || o.uid === me || holders.has(o.uid) || !o.pubkey || !o.fingerprint) continue;
+				const li = document.createElement('li');
+				const btn = document.createElement('button');
+				btn.type = 'button';
+				btn.className = 'wc-btn-secondary wc-btn-inline';
+				btn.textContent = t('grant_btn', 'Grant access');
+				const label = document.createElement('span');
+				label.textContent = o.uid + ' ';
+				li.appendChild(label);
+				li.appendChild(btn);
+				btn.addEventListener('click', async () => {
+					if (btn.disabled) return;
+					btn.disabled = true;
+					try {
+						let target = o;
+						let res = null;
+						for (let attempt = 0; attempt < 2; attempt++) {
+							const wrap = await window.WcCrypto.sealToPubkey(caseKey, target.pubkey);
+							try {
+								res = await api('/api/officers/grants', { method: 'POST', body: { wraps: { [data.id + ':' + target.uid]: { wrap, fp: target.fingerprint } } } });
+								break;
+							} catch (e) {
+								// Target rotated mid-grant — refetch the live key set once.
+								if (e.status === 409 && e.payload && e.payload.error === 'STALE_OFFICER_KEY' && attempt === 0) {
+									const fresh = await api('/api/officers');
+									target = (fresh.officers || []).find((x) => x.uid === o.uid && x.status === 'active') || null;
+									if (!target || !target.pubkey) throw e;
+									continue;
+								}
+								throw e;
+							}
+						}
+						li.remove();
+						if (grantList.children.length === 0) grantSec.hidden = true;
+						toast('success', t('grant_done', 'Access granted.'));
+					} catch (e) {
+						toast('error', e.message || t('err_generic', 'Something went wrong.'));
+						btn.disabled = false;
+					}
+				});
+				grantList.appendChild(li);
+			}
+			if (grantList.children.length > 0) grantSec.hidden = false;
+		}
+
 		root.querySelectorAll('[data-wc-status]').forEach((btn) => {
 			btn.addEventListener('click', async () => {
 				if (btn.disabled) return;
@@ -1018,7 +1071,10 @@
 		root.querySelectorAll('[data-wc-copy]').forEach((btn) => {
 			btn.addEventListener('click', () => {
 				const src = root.querySelector('[data-wc-verbal-' + btn.dataset.wcCopy + ']');
-				if (!src || !src.textContent) return;
+				if (!src || !src.textContent) {
+					toast('error', t('err_load', 'Could not load.'));
+					return;
+				}
 				copyText(src.textContent).then(
 					() => toast('success', t('copied', 'Copied.')),
 					() => toast('error', t('err_copy', 'Copy failed — select and copy the text manually.')));

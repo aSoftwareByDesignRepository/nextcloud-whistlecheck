@@ -1,12 +1,15 @@
 // @ts-check
 import { test, expect } from '@playwright/test'
 import { assertNotServerUpdater } from './helpers/auth.js'
+import { resetRateBuckets } from './helpers/ratelimit.js'
 
 /**
  * Anonymous reporter round-trip — the critical public flow, no login needed.
  * Real browser crypto: submit seals with libsodium, the case code is derived
  * client-side and the follow-up page decrypts the thread.
  */
+test.beforeAll(() => resetRateBuckets()) // fresh 'submit' bucket (5/h per IP)
+
 test.describe('public reporter flow', () => {
   test('submit → receive code → open thread → reply', async ({ page }) => {
     test.setTimeout(120000) // argon2id + possible PoW escalation is slow by design

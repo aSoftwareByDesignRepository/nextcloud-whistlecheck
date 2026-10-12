@@ -69,7 +69,11 @@ class PublicPageController extends Controller
 	#[NoCSRFRequired]
 	public function reportForm(): TemplateResponse
 	{
-		$this->rate->check($this->ip(), 'params');
+		try {
+			$this->rate->check($this->ip(), 'params');
+		} catch (DomainException $e) {
+			return $this->limited($e);
+		}
 		return $this->standalone('public-report', $this->formParams());
 	}
 
@@ -118,6 +122,9 @@ class PublicPageController extends Controller
 			);
 			return $this->standalone('public-code', array_merge($this->bootParams(), ['code' => $result['code'], 'e2e' => false]));
 		} catch (DomainException|ValidationException $e) {
+			if ($e instanceof DomainException && $e->httpStatus === 429) {
+				return $this->limited($e);
+			}
 			return $this->standalone('public-report', array_merge($this->formParams(), [
 				'error' => $this->errorText($e),
 				'fields' => $e instanceof ValidationException ? $e->getFields() : [],
@@ -129,7 +136,11 @@ class PublicPageController extends Controller
 	#[NoCSRFRequired]
 	public function followForm(): TemplateResponse
 	{
-		$this->rate->check($this->ip(), 'params');
+		try {
+			$this->rate->check($this->ip(), 'params');
+		} catch (DomainException $e) {
+			return $this->limited($e);
+		}
 		return $this->standalone('public-follow', $this->followParams());
 	}
 
@@ -161,7 +172,10 @@ class PublicPageController extends Controller
 				'code' => $code,
 				'form_token' => $this->mintFormToken(),
 			]));
-		} catch (DomainException|ValidationException) {
+		} catch (DomainException|ValidationException $e) {
+			if ($e instanceof DomainException && $e->httpStatus === 429) {
+				return $this->limited($e);
+			}
 			return $this->standalone('public-follow', array_merge($this->followParams(), [
 				'error' => $this->l->t('Invalid or expired case code.'),
 			]));
@@ -202,6 +216,9 @@ class PublicPageController extends Controller
 				'code' => $code,
 			]));
 		} catch (DomainException|ValidationException $e) {
+			if ($e instanceof DomainException && $e->httpStatus === 429) {
+				return $this->limited($e);
+			}
 			return $this->standalone('public-follow', array_merge($this->followParams(), [
 				'error' => $this->errorText($e),
 				'code' => (string)$this->request->getParam('code', ''),
@@ -289,10 +306,16 @@ class PublicPageController extends Controller
 		];
 	}
 
-	/** @return list<array{uid:string,pubkey:string}> */
+	/**
+	 * Officers embedded in public pages. Must carry the same `fp` fingerprint
+	 * the bootstrap endpoint serves — storeWraps pins every wrap to the key
+	 * version it was sealed under and rejects wraps without one.
+	 *
+	 * @return list<array{uid:string,pubkey:string,fp:string}>
+	 */
 	private function officerPubkeys(): array
 	{
-		return array_map(static fn ($o) => ['uid' => $o['uid'], 'pubkey' => $o['pubkey']],
+		return array_map(static fn ($o) => ['uid' => $o['uid'], 'pubkey' => $o['pubkey'], 'fp' => $o['fingerprint']],
 			$this->officerKeys->activePubkeys());
 	}
 
@@ -342,6 +365,23 @@ class PublicPageController extends Controller
 		if (!$this->formTokens->claim($token)) {
 			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
 		}
+	}
+
+	/**
+	 * Rate-limited reporter gets a friendly, honest page — never the generic
+	 * Nextcloud 500 "Interner Serverfehler" that suggests the channel is broken.
+	 * Keeps the strict guest CSP / no-store headers from standalone().
+	 */
+	private function limited(DomainException $e): TemplateResponse
+	{
+		$res = $this->standalone('public-limited', array_merge($this->bootParams(), [
+			'retry_after' => $e->retryAfterSeconds,
+		]));
+		$res->setStatus($e->httpStatus);
+		if ($e->retryAfterSeconds !== null && $e->retryAfterSeconds > 0) {
+			$res->addHeader('Retry-After', (string)$e->retryAfterSeconds);
+		}
+		return $res;
 	}
 
 	private function standalone(string $template, array $params): TemplateResponse

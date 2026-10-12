@@ -22,7 +22,32 @@
 		const d = dataset().wcApiBase || '';
 		return d.replace(/\/api\/public.*$/, '');
 	})();
-	const officers = (() => { try { return JSON.parse(dataset().wcOfficers || '[]'); } catch (e) { return []; } })();
+	let officers = (() => { try { return JSON.parse(dataset().wcOfficers || '[]'); } catch (e) { return []; } })();
+
+	/**
+	 * Refresh the active officer set (uid/pubkey/fp) after a stale-key 409 —
+	 * an officer rotating mid-submit must not silently orphan a case.
+	 */
+	async function refreshOfficers() {
+		const res = await fetch(apiBase + '/api/public/bootstrap', {
+			credentials: 'omit',
+			headers: { 'Accept': 'application/json' },
+		});
+		const json = await safeJson(res);
+		if (res.ok && json && json.success && Array.isArray(json.data.officers)) {
+			officers = json.data.officers;
+		}
+		return officers;
+	}
+
+	/** Seal the case key to every active officer, pinned to the key version used. */
+	async function sealWraps(C, caseKey) {
+		const wraps = [];
+		for (const o of officers) {
+			wraps.push({ uid: o.uid, wrap: await C.sealToPubkey(caseKey, o.pubkey), fp: o.fp });
+		}
+		return wraps;
+	}
 
 	function showError(msg, fields) {
 		const box = document.getElementById('wc-form-error');
@@ -130,15 +155,22 @@
 			const caseKey = await C.randomKey();
 			const kRep = await C.reporterKey(genBytes, saltK);
 
-			// officers pubkeys embedded by the page (bootstrap data).
+			// officers pubkeys embedded by the page (bootstrap data). The
+			// server pins every wrap to the key's fingerprint — a stale
+			// cached page can miss `fp`, so refresh once instead of
+			// submitting wraps that can never be stored.
 			if (officers.length === 0) {
 				showError(t('err_notready', 'This channel is not ready yet. Please try again later.'));
 				return;
 			}
-			const wraps = {};
-			for (const o of officers) {
-				wraps[o.uid] = await C.sealToPubkey(caseKey, o.pubkey);
+			if (officers.some((o) => !o.fp)) {
+				await refreshOfficers();
+				if (officers.length === 0 || officers.some((o) => !o.fp)) {
+					showError(t('err_notready', 'This channel is not ready yet. Please try again later.'));
+					return;
+				}
 			}
+			let wraps = await sealWraps(C, caseKey);
 
 			const files = form.querySelector('[name=attachments]')?.files || [];
 			const maxMb = parseInt(form.dataset.maxMb || '10', 10);
@@ -168,8 +200,20 @@
 				receipt_cipher: await C.seal('wchk:receipt', caseKey),
 			};
 
-			const res = await api('/api/public/submit', payload);
-			const json = await safeJson(res);
+			let res = await api('/api/public/submit', payload);
+			let json = await safeJson(res);
+			// Officer rotated mid-submit: wraps sealed to the old key are
+			// rejected with 409 — refetch the live key set, re-seal, retry once.
+			if (res.status === 409 && json && json.error === 'STALE_OFFICER_KEY') {
+				await refreshOfficers();
+				if (officers.length === 0) {
+					showError(t('err_notready', 'This channel is not ready yet. Please try again later.'));
+					return;
+				}
+				payload.wraps = await sealWraps(C, caseKey);
+				res = await api('/api/public/submit', payload);
+				json = await safeJson(res);
+			}
 			if (res.ok && json && json.success) {
 				showCode(C.format(codeCanonical));
 			} else {

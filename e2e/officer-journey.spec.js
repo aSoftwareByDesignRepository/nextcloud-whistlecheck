@@ -2,22 +2,35 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { login, assertNotServerUpdater } from './helpers/auth.js'
+import { resetRateBuckets } from './helpers/ratelimit.js'
+import { provisionOfficer, deprovisionOfficer } from './helpers/officer.js'
 
 /**
  * Officer journey coverage — guards the class of bug that silently killed
  * the whole app (skip-link inside data-wc-i18n swallowed every data attr,
  * leaving wcPage undefined and all officer JS dead while axe stayed green).
  *
- * wchb is a dedicated fixture officer: pending row, fresh key, known
- * passphrase. The journey is the real full loop:
- *   set key (inline panel) → public submit wraps to it → inbox → case →
- *   unlock panel (wrong pass → inline error → right pass → content).
+ * Every describe provisions its own throwaway officer — never a shared
+ * uid. A second runner (or leftover CI job) rotating the same key mid-test
+ * seals wraps to a pubkey our blob cannot open, and the failure looks like
+ * a product decryption bug. Unique uids make each spec hermetic.
  */
 
-const WCHB = { username: 'wchb', password: 'WchbJourney-8k42x' }
-const WCHB_PASS = 'journey-passphrase-9x'
+const OFFICER_PASS = 'journey-passphrase-9x'
+
+// Fresh rate buckets: a11y-smoke has already spent 'params' hits, and the
+// journey consumes a 'submit' hit (5/h per IP) — deterministic, never
+// weakened production limits.
+test.beforeAll(() => resetRateBuckets())
 
 test.describe('officer pages: boot integrity (U1 regression)', () => {
+	let officer
+	test.beforeAll(() => { officer = provisionOfficer() })
+	test.afterAll(() => deprovisionOfficer(officer?.uid))
+	test.beforeEach(async ({ page }) => {
+		await login(page, { username: officer.uid, password: officer.password })
+	})
+
 	const pages = [
 		['/apps/whistlecheck/', 'inbox'],
 		['/apps/whistlecheck/officers', 'officers'],
@@ -57,22 +70,28 @@ test.describe('officer pages: boot integrity (U1 regression)', () => {
 	}
 })
 
-test.describe('officer journey: inbox + case', () => {
-	test('inbox renders rows; row opens case via Enter key', async ({ page }) => {
+test.describe('officer journey: inbox + nav (fresh fixture)', () => {
+	let officer
+	test.beforeAll(() => { officer = provisionOfficer() })
+	test.afterAll(() => deprovisionOfficer(officer?.uid))
+	test.beforeEach(async ({ page }) => {
+		await login(page, { username: officer.uid, password: officer.password })
+	})
+
+	test('inbox resolves: rows or empty state, never stuck loading', async ({ page }) => {
 		await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
 		await assertNotServerUpdater(page)
-		const rows = page.locator('[data-wc-inbox] tr')
-		await expect(rows.first()).toBeVisible({ timeout: 20000 })
-		// not still stuck on the loading row
+		// Loading must resolve either way — a stuck spinner is a dead end.
 		await expect(page.locator('.wc-loading')).toBeHidden({ timeout: 20000 })
-
-		const first = page.locator('[data-wc-inbox] tr[data-case-id]').first()
-		const count = await first.count()
-		if (count === 0) return // empty inbox is a valid state — rows optional
-		// The title cell carries a real anchor — the keyboard path.
-		await first.locator('a.wc-case-link').focus()
-		await page.keyboard.press('Enter')
-		await expect(page).toHaveURL(/\/cases\/\d+/)
+		const inbox = page.locator('[data-wc-inbox]')
+		await expect(inbox).toBeVisible()
+		// A fresh officer legitimately has zero cases — the empty state is a
+		// first-class render, not an error.
+		const rows = inbox.locator('tr[data-case-id]')
+		const rowCount = await rows.count()
+		if (rowCount === 0) {
+			await expect(inbox).toContainText(/./) // rendered empty state, not blank
+		}
 	})
 
 	test('nav links traverse every section (no dead ends)', async ({ page }) => {
@@ -84,42 +103,69 @@ test.describe('officer journey: inbox + case', () => {
 			await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
 		}
 	})
+
+	test('officer inbox renders as cards at 390px', async ({ page }) => {
+		await page.setViewportSize({ width: 390, height: 844 })
+		await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
+		await expect(page.locator('.wc-loading')).toBeHidden({ timeout: 20000 })
+		const overflow = await page.evaluate(
+			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+		)
+		expect(overflow).toBeLessThanOrEqual(1)
+		// Card layout active: thead hidden, labeled cells stacked
+		const theadHidden = await page.locator('.wc-table-cards thead').isHidden()
+		expect(theadHidden).toBe(true)
+	})
 })
 
-test.describe('wchb full journey', () => {
-	test('key setup → public submit → unlock → read case', async ({ browser, baseURL }) => {
+test.describe('officer full journey (fresh fixture)', () => {
+	test('key setup → public submit → unlock → read case', async ({ page }) => {
 		test.setTimeout(240000)
-		// Fresh context — the project storageState is mcauditor's session;
-		// wchb must log in as itself.
-		const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } })
-		const page = await context.newPage()
-		await login(page, WCHB)
+		const officer = provisionOfficer()
+		try {
+		await login(page, { username: officer.uid, password: officer.password })
 		await assertNotServerUpdater(page)
 
 		// ── 1. Key setup through the inline panel (no modal prompts) ──
 		await page.goto('/apps/whistlecheck/officers', { waitUntil: 'domcontentloaded' })
 		await expect(page.locator('[data-wc-keyreg]')).toBeVisible()
-		await page.locator('[data-wc-newpass]').fill(WCHB_PASS)
-		await page.locator('[data-wc-newpass2]').fill(WCHB_PASS)
+		await page.locator('[data-wc-newpass]').fill(OFFICER_PASS)
+		await page.locator('[data-wc-newpass2]').fill(OFFICER_PASS)
 		await page.locator('[data-wc-genkey]').click()
-		// Page reloads after successful registration; row shows active.
-		await expect(page.locator('tbody[data-wc-officers]')).toContainText('wchb', { timeout: 45000 })
+		// Belt-and-braces: should the fixture ever land in rotate-confirm
+		// state, a visible confirm error gets the explicit second click.
+		const keyErr = page.locator('[data-wc-keyreg-err]')
+		try {
+			await keyErr.waitFor({ state: 'visible', timeout: 15000 })
+			await page.locator('[data-wc-genkey]').click()
+		} catch {
+			// Fresh registration — no confirm needed.
+		}
+		// Page reloads after successful registration — wait for our row's
+		// status cell to read 'active', which proves the POST committed AND
+		// the post-reload list fetch rendered (a bare name match resolves on
+		// the pre-reload DOM and lets a report seal to a dying key).
+		const officerRow = page.locator('tbody[data-wc-officers] tr', { hasText: officer.uid })
+		await expect(officerRow).toContainText('active', { timeout: 45000 })
 
-		// ── 2. Anonymous report wraps to the now-active wchb ──
-		const pub = await page.context().newPage()
+		// ── 2. Anonymous report wraps to the now-active officer ──
+		// Separate anonymous context — the reporter has no session.
+		const pubContext = await page.context().browser().newContext()
+		const pub = await pubContext.newPage()
 		const bodyText = `journey body ${Date.now()}`
 		await pub.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
 		await pub.locator('#wc-body').fill(bodyText)
 		await pub.locator('#wc-report-form [type=submit]').click()
 		const codeEl = pub.locator('#wc-code-panel .wc-code-value')
 		await expect(codeEl).not.toBeEmpty({ timeout: 90000 })
-		await pub.close()
+		await pubContext.close()
 
-		// ── 3. Inbox shows the case; open it ──
+		// ── 3. Inbox shows the case; open it via keyboard ──
 		await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
 		const row = page.locator('[data-wc-inbox] tr[data-case-id]').first()
 		await expect(row).toBeVisible({ timeout: 20000 })
-		await row.click()
+		await row.locator('a.wc-case-link').focus()
+		await page.keyboard.press('Enter')
 		await expect(page).toHaveURL(/\/cases\/\d+/)
 
 		// ── 4. Unlock panel: wrong pass → inline error, right pass → content ──
@@ -131,7 +177,7 @@ test.describe('wchb full journey', () => {
 		await page.locator('[data-wc-unlock-go]').click()
 		await expect(page.locator('[data-wc-unlock-err]')).toBeVisible({ timeout: 15000 })
 
-		await page.locator('[data-wc-unlock-pass]').fill(WCHB_PASS)
+		await page.locator('[data-wc-unlock-pass]').fill(OFFICER_PASS)
 		await page.locator('[data-wc-unlock-go]').click()
 		await expect(panel).toBeHidden({ timeout: 15000 })
 		await expect(page.locator('[data-wc-messages]')).toContainText(bodyText, { timeout: 30000 })
@@ -141,7 +187,9 @@ test.describe('wchb full journey', () => {
 			.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
 			.analyze()
 		expect(axe.violations, `axe on case page: ${JSON.stringify(axe.violations.map((v) => v.id))}`).toEqual([])
-		await context.close()
+		} finally {
+			deprovisionOfficer(officer.uid)
+		}
 	})
 })
 
@@ -156,41 +204,5 @@ test.describe('responsive: no horizontal overflow at phone width', () => {
 			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
 		)
 		expect(overflow).toBeLessThanOrEqual(1)
-	})
-
-	test('officer inbox renders as cards at 390px', async ({ page }) => {
-		await page.setViewportSize(mobile)
-		await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
-		await expect(page.locator('.wc-loading')).toBeHidden({ timeout: 20000 })
-		const overflow = await page.evaluate(
-			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
-		)
-		expect(overflow).toBeLessThanOrEqual(1)
-		// Card layout active: thead hidden, labeled cells stacked
-		const theadHidden = await page.locator('.wc-table-cards thead').isHidden()
-		expect(theadHidden).toBe(true)
-	})
-})
-
-test.describe('public surface: forgiving inputs', () => {
-	test('case-code input auto-formats into dash groups', async ({ page }) => {
-		await page.goto('/apps/whistlecheck/case', { waitUntil: 'domcontentloaded' })
-		const input = page.locator('#wc-code')
-		await input.fill('abcde fghij-klmno_12345')
-		await expect(input).toHaveValue('ABCDE-FGHIJ-KLMNO-12345')
-	})
-
-	test('code panel exposes copy + follow link (no dead end)', async ({ page }) => {
-		test.setTimeout(120000)
-		await page.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
-		await page.locator('#wc-body').fill(`ux journey ${Date.now()}`)
-		await page.locator('#wc-report-form [type=submit]').click()
-		const panel = page.locator('#wc-code-panel')
-		await expect(panel).toBeVisible({ timeout: 90000 })
-		await expect(panel.locator('[data-wc-copy-code]')).toBeVisible()
-		const follow = panel.locator('[data-wc-goto-follow]')
-		await expect(follow).toBeVisible()
-		await follow.click()
-		await expect(page.locator('#wc-follow-form')).toBeVisible()
 	})
 })

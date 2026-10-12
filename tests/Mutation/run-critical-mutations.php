@@ -143,6 +143,13 @@ $mutations = [
 		'filters' => ['AuditServiceTest'],
 	],
 	[
+		'name' => 'wrap_fingerprint_unchecked',
+		'file' => 'lib/Service/OfficerKeyService.php',
+		'from' => 'if (!hash_equals($officer->getFingerprint(), $fp)) {',
+		'to' => 'if (false && !hash_equals($officer->getFingerprint(), $fp)) {',
+		'filters' => ['OfficerKeyServiceTest'],
+	],
+	[
 		'name' => 'rotation_rewrap_scope_dropped',
 		'file' => 'lib/Service/OfficerKeyService.php',
 		'from' => 'if (!isset($held[(int)$caseId])) {',

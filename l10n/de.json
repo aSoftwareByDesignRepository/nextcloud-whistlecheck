@@ -112,6 +112,7 @@
         "Passphrases do not match.": "Die Passphrasen stimmen nicht überein.",
         "Pause retention deletion": "Löschfrist pausieren",
         "Please fill in the highlighted fields.": "Bitte füllen Sie die markierten Felder aus.",
+        "Please wait a moment": "Bitte kurz warten",
         "PoW escalation after N hits over limit": "PoW-Eskalation nach N Anfragen über dem Limit",
         "Reason": "Grund",
         "Receipt confirmed.": "Empfang bestätigt.",
@@ -145,6 +146,7 @@
         "Settings sections": "Einstellungsbereiche",
         "Showing the 500 most recent cases.": "Die 500 neuesten Fälle werden angezeigt.",
         "Skip to case access": "Zum Fallzugang springen",
+        "Skip to content": "Zum Inhalt springen",
         "Skip to report form": "Zum Meldeformular springen",
         "Someone else changed this case — reloading.": "Jemand anderes hat diesen Fall geändert — wird neu geladen.",
         "Something went wrong. Please try again.": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
@@ -160,8 +162,10 @@
         "This case is end-to-end encrypted. Enter your passphrase to read it.": "Dieser Fall ist Ende-zu-Ende-verschlüsselt. Geben Sie Ihre Passphrase ein, um ihn zu lesen.",
         "This case is not encrypted for your key — another officer must re-grant access.": "Dieser Fall ist nicht für Ihren Schlüssel verschlüsselt — eine andere Person muss den Zugriff erneut erteilen.",
         "This channel is not ready yet. Please try again later.": "Dieser Kanal ist noch nicht bereit. Bitte später erneut versuchen.",
+        "This protects the reporting channel against abuse. You can try again in about {n} seconds.": "Dies schützt den Meldekanal vor Missbrauch. Sie können es in etwa {n} Sekunden erneut versuchen.",
         "This report was encrypted on our server (JavaScript was off).": "Diese Meldung wurde auf unserem Server verschlüsselt (JavaScript war aus).",
         "Time": "Zeit",
+        "Too many requests — please try again later.": "Zu viele Anfragen — bitte später erneut versuchen.",
         "Total cases:": "Fälle gesamt:",
         "Try again": "Erneut versuchen",
         "Unassigned": "Nicht zugewiesen",
@@ -188,7 +192,13 @@
         "close_pending_other": "„{t}“ wurde von {by} angefragt — zum Bestätigen denselben Button klicken.",
         "close_pending_self": "„{t}“ angefragt — ein:e zweite:r Sachbearbeiter:in muss bestätigen.",
         "close_pending_toast": "Anfrage gespeichert — ein:e zweite:r Sachbearbeiter:in muss bestätigen.",
-        "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.": "{n} Fall/Fälle konnte(n) nicht neu verschlüsselt werden — erneut auf „Meinen Schlüssel rotieren“ klicken, um trotzdem fortzufahren."
+        "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.": "{n} Fall/Fälle konnte(n) nicht neu verschlüsselt werden — erneut auf „Meinen Schlüssel rotieren“ klicken, um trotzdem fortzufahren.",
+        "Grant access": "Zugriff gewähren",
+        "Access granted.": "Zugriff gewährt.",
+        "These officers can no longer read this case (for example after a key change without re-encryption). Granting re-seals the case key to their current key.": "Diese Sachbearbeiter können diesen Fall nicht mehr lesen (z. B. nach einem Schlüsselwechsel ohne Neuverschlüsselung). Beim Gewähren wird der Fallschlüssel erneut auf ihren aktuellen Schlüssel versiegelt.",
+        "Reply sent.": "Antwort gesendet.",
+        "Please check the highlighted fields.": "Bitte prüfen Sie die markierten Felder.",
+        "Request recorded — a second officer must confirm.": "Vorgang erfasst — ein zweiter Sachbearbeiter muss bestätigen."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

@@ -50,26 +50,20 @@
 	border-bottom: 1px solid var(--color-border);
 	vertical-align: middle;
 }
-.wc-table tbody tr {
-	cursor: pointer;
-	min-height: 44px;
-}
-.wc-table tbody tr:hover, .wc-table tbody tr:focus-visible {
-	background: var(--color-background-hover);
-	outline: none;
-}
+.wc-table tbody tr { min-height: 44px; }
+.wc-table tbody tr:hover { background: var(--color-background-hover); }
 
 .wc-status {
 	display: inline-block;
 	padding: 2px 10px;
-	border-radius: 999px;
+	border-radius: var(--border-radius-pill);
 	border: 1px solid var(--color-border);
 	font-size: 0.9em;
 	font-weight: 600;
 }
 .wc-status-received   { border-color: var(--color-primary); }
-.wc-status-in_review  { border-color: var(--color-warning); }
-.wc-status-action_taken { border-color: var(--color-success); }
+.wc-status-in_review  { border-color: var(--color-warning-text); }
+.wc-status-action_taken { border-color: var(--color-success-text); }
 .wc-status-closed, .wc-status-archived { border-color: var(--color-text-maxcontrast); color: var(--color-text-maxcontrast); }
 .wc-badge-overdue {
 	display: inline-block;
@@ -77,9 +71,9 @@
 	padding: 2px 8px;
 	font-size: 0.85em;
 	font-weight: 700;
-	border-radius: 4px;
+	border-radius: var(--border-radius-small);
 	background: var(--color-error);
-	color: var(--color-error-text, #fff);
+	color: var(--color-error-text);
 }
 
 .wc-messages, .wc-notes {
@@ -104,7 +98,9 @@
 
 .wc-field { margin: 0 0 16px; max-width: 640px; }
 .wc-field label { display: block; font-weight: 600; margin-bottom: 4px; }
-.wc-field input[type=text], .wc-field input[type=number], .wc-field textarea, .wc-field select,
+.wc-field input[type=text], .wc-field input[type=number], .wc-field input[type=password],
+.wc-field input[type=email], .wc-field input[type=file], .wc-field input[type=search],
+.wc-field input[type=tel], .wc-field input[type=url], .wc-field textarea, .wc-field select,
 .wc-field input:not([type]) {
 	width: 100%;
 	min-height: 44px;
@@ -121,34 +117,39 @@
 .wc-hint { font-size: 0.88em; color: var(--color-text-maxcontrast); margin: 4px 0 0; }
 .wc-honesty, .wc-warn {
 	padding: 10px 14px;
-	border-inline-start: 4px solid var(--color-warning);
-	background: var(--color-background-hover);
-	border-radius: 4px;
+	border-inline-start: 4px solid var(--color-warning-text);
+	background: var(--color-warning);
+	color: var(--color-warning-text);
+	border-radius: var(--border-radius-small);
 }
 .wc-error {
 	padding: 12px 16px;
 	margin: 12px 0;
-	border-inline-start: 4px solid var(--color-error);
-	background: var(--color-error-hover, var(--color-background-hover));
-	border-radius: 4px;
+	border-inline-start: 4px solid var(--color-error-text);
+	background: var(--color-error);
+	color: var(--color-error-text);
+	border-radius: var(--border-radius-small);
 	font-weight: 600;
 }
 .wc-notice {
 	padding: 12px 16px;
 	margin: 12px 0;
-	border-inline-start: 4px solid var(--color-success);
-	background: var(--color-background-hover);
-	border-radius: 4px;
+	border-inline-start: 4px solid var(--color-success-text);
+	background: var(--color-success);
+	color: var(--color-success-text);
+	border-radius: var(--border-radius-small);
 }
 .wc-field-error, .wc-field-error[id] {
 	display: block;
 	margin-top: 4px;
-	color: var(--color-error);
+	color: var(--color-error-text);
 	font-weight: 600;
 }
-[aria-invalid="true"] { border-color: var(--color-error) !important; }
+[aria-invalid="true"] { border-color: var(--color-error-text) !important; }
 
-.wc-btn-primary, .wc-btn-secondary, .wc-btn-danger {
+/* Scoped under .wc-app: core `button:not(.button-vue)` (0-1-1) would
+ * otherwise flatten these to --default-clickable-area (34px). */
+.wc-app .wc-btn-primary, .wc-app .wc-btn-secondary, .wc-app .wc-btn-danger {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -161,11 +162,11 @@
 	font-weight: 600;
 	cursor: pointer;
 }
-.wc-btn-primary { background: var(--color-primary-element); color: var(--color-primary-element-text); min-height: 48px; }
-.wc-btn-secondary { background: var(--color-background-hover); color: var(--color-main-text); border-color: var(--color-border); }
-.wc-btn-danger { background: var(--color-error); color: var(--color-error-text, #fff); }
-.wc-btn-primary:hover { background: var(--color-primary-element-hover); }
-.wc-btn-secondary:hover { background: var(--color-background-dark); }
+.wc-app .wc-btn-primary { background: var(--color-primary-element); color: var(--color-primary-element-text); min-height: 48px; }
+.wc-app .wc-btn-secondary { background: var(--color-background-hover); color: var(--color-main-text); border-color: var(--color-border); }
+.wc-app .wc-btn-danger { background: var(--color-error); color: var(--color-error-text); }
+.wc-app .wc-btn-primary:hover { background: var(--color-primary-element-hover); }
+.wc-app .wc-btn-secondary:hover { background: var(--color-background-dark); }
 
 .wc-status-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
 
@@ -188,10 +189,11 @@
 	font-family: monospace;
 	word-break: break-all;
 }
-/* --color-success/--color-error are theme *tints* (light fills) — as text on
-   white they fail WCAG 1.4.3. Use dedicated text shades (≥4.5:1 on #fff). */
-.wc-ok { color: #157f2f; }
-.wc-bad { color: #b3261e; }
+/* --color-success/--color-error are theme *tints* (light fills) — as text they
+   fail WCAG 1.4.3. Theming ships matching *-text inks that stay AA in every
+   theme; always pair tint backgrounds with their -text ink. */
+.wc-ok { color: var(--color-success-text); }
+.wc-bad { color: var(--color-error-text); }
 .wc-attachment { min-height: 44px; }
 
 #wc-toasts {
@@ -208,11 +210,11 @@
 	border-radius: var(--border-radius-element);
 	background: var(--color-main-background);
 	border: 1px solid var(--color-border);
-	box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-	max-width: 360px;
+	box-shadow: 0 2px 10px var(--color-box-shadow, rgba(0,0,0,0.15));
+	max-width: min(360px, calc(100vw - 32px));
 }
-.wc-toast-error { border-inline-start: 4px solid var(--color-error); }
-.wc-toast-success { border-inline-start: 4px solid var(--color-success); }
+.wc-toast-error { border-inline-start: 4px solid var(--color-error-text); }
+.wc-toast-success { border-inline-start: 4px solid var(--color-success-text); }
 
 .wc-skip {
 	position: absolute;
@@ -221,7 +223,7 @@
 	z-index: 4000;
 	background: var(--color-main-background);
 	padding: 10px 16px;
-	border-radius: 4px;
+	border-radius: var(--border-radius-small);
 }
 .wc-skip:focus { top: 8px; }
 
@@ -236,14 +238,7 @@
 :focus-visible {
 	outline: 3px solid var(--color-primary-element);
 	outline-offset: 2px;
-	border-radius: 2px;
-}
-
-@media (max-width: 768px) {
-	.wc-table { display: block; overflow-x: auto; }
-	.wc-msg { max-width: 100%; }
-	.wc-btn-primary, .wc-btn-secondary, .wc-btn-danger { width: 100%; }
-	.wc-nav a { flex: 1 1 45%; justify-content: center; }
+	border-radius: var(--border-radius-small);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -252,7 +247,7 @@
 
 .wc-pending-close {
 	background: var(--color-warning);
-	color: var(--color-warning-text, #000);
+	color: var(--color-warning-text);
 	border-radius: var(--border-radius);
 	padding: 10px 14px;
 	font-weight: 600;
@@ -306,13 +301,14 @@
 }
 .wc-load-error {
 	padding: 14px;
-	color: var(--color-error);
+	color: var(--color-error-text);
 	font-weight: 600;
 }
-.wc-btn-inline { min-height: 36px; padding: 0 14px; width: auto !important; }
+.wc-app .wc-btn-inline { min-height: 36px; padding: 0 14px; width: auto !important; }
 
 .wc-devices { list-style: none; padding: 0; margin: 0 0 20px; }
-.wc-devices li {
+.wc-devices li,
+.wc-grant-list li {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -322,22 +318,30 @@
 	border-bottom: 1px solid var(--color-border);
 }
 
+.wc-grant-list { list-style: none; padding: 0; margin: 0 0 8px; }
+
 .wc-nav-sub { margin-top: -8px; }
 .wc-nav-sub a { min-height: 36px; font-size: 0.92em; }
 
 .wc-case-link {
-	display: inline-block;
+	display: inline-flex;
+	align-items: center;
+	min-height: 44px;
 	color: var(--color-main-text);
 	font-weight: 600;
 }
 .wc-table-cards tr { cursor: pointer; }
 .wc-table-cards td:has(a.wc-case-link) { cursor: default; }
 
-/* Mobile (<768px, matches the layout breakpoint used elsewhere): inbox
- * table becomes a stack of big tappable cards; touch targets grow to the
- * 44px minimum — .wc-btn-inline/.wc-nav-sub are 36px on desktop. */
+/* ≤768px (design-system breakpoint-md: phone → tablet): inbox table becomes
+ * labeled cards, buttons go full-width, non-card tables scroll in place,
+ * touch targets reach the 44px minimum (inline/sub-nav are 36px on desktop). */
 @media (max-width: 768px) {
-	.wc-btn-inline { min-height: 44px; }
+	.wc-table:not(.wc-table-cards) { display: block; overflow-x: auto; }
+	.wc-msg { max-width: 100%; }
+	.wc-app .wc-btn-primary, .wc-app .wc-btn-secondary, .wc-app .wc-btn-danger { width: 100%; }
+	.wc-nav a { flex: 1 1 45%; justify-content: center; }
+	.wc-app .wc-btn-inline { min-height: 44px; }
 	.wc-nav-sub a { min-height: 44px; }
 	.wc-table-cards thead { display: none; }
 	.wc-table-cards, .wc-table-cards tbody, .wc-table-cards tr { display: block; overflow: visible; }
@@ -359,10 +363,44 @@
 	.wc-table-cards td::before {
 		content: attr(data-label);
 		font-weight: 700;
-		font-size: 0.85em;
+		font-size: 0.875em;
 		color: var(--color-text-maxcontrast);
 	}
 	.wc-table-cards td.wc-col-title { font-weight: 700; font-size: 1.05em; }
 	.wc-table-cards td.wc-load-error { display: block; }
 	.wc-table-cards td.wc-load-error::before { content: none; }
+}
+
+/* ── High-contrast / forced-colors hardening ──
+ * forced-colors strips theme backgrounds entirely — restore borders and a
+ * Highlight focus ring with system colors so structure survives. */
+@media (forced-colors: active) {
+	.wc-panel, .wc-msg, .wc-toast, .wc-status, .wc-badge-overdue,
+	.wc-pending-close, .wc-unlock, .wc-notice, .wc-error, .wc-honesty, .wc-warn,
+	.wc-table-cards tr {
+		border: 1px solid CanvasText;
+	}
+	.wc-field input, .wc-field textarea, .wc-field select,
+	.wc-btn-secondary { border-color: ButtonBorder; }
+	.wc-nav a[aria-current="page"] {
+		forced-color-adjust: none;
+		background: Highlight;
+		color: HighlightText;
+	}
+	.wc-app :focus-visible, .wc-nav a:focus-visible, button:focus-visible {
+		outline: 3px solid Highlight;
+		outline-offset: 2px;
+	}
+	.wc-badge-overdue, .wc-status { forced-color-adjust: auto; }
+}
+
+/* prefers-contrast:more — low-vision users who keep colors but need
+ * stronger separation: frames and focus rings harden to main-text ink. */
+@media (prefers-contrast: more) {
+	.wc-panel, .wc-msg, .wc-table td, .wc-table th,
+	.wc-field input, .wc-field textarea, .wc-field select,
+	.wc-devices li, .wc-status {
+		border-color: var(--color-main-text);
+	}
+	.wc-app :focus-visible { outline-width: 3px; }
 }

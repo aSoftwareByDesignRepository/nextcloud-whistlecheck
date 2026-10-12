@@ -1,11 +1,13 @@
 // @ts-check
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { assertNotServerUpdater } from './helpers/auth.js'
+import { assertNotServerUpdater, login } from './helpers/auth.js'
+import { provisionOfficer, deprovisionOfficer } from './helpers/officer.js'
 
 /**
- * WCAG 2.1 A/AA smoke — public pages need no auth; officer pages run only
- * when the setup project produced an authenticated storage state.
+ * WCAG 2.1 A/AA smoke — public pages need no auth; officer pages log in as
+ * a throwaway fixture officer provisioned for this file (no shared uid —
+ * a parallel run must never invalidate our session or rotate our key).
  */
 const publicRoutes = [
   '/apps/whistlecheck/report',
@@ -41,16 +43,20 @@ for (const route of publicRoutes) {
   })
 }
 
-for (const route of officerRoutes) {
-  test(`officer a11y ${route}`, async ({ page }) => {
-    await page.goto(route, { waitUntil: 'domcontentloaded' })
-    if (page.url().includes('/login')) {
-      test.skip(true, 'requires officer storage state (auth.setup)')
-      return
-    }
-    await axeCheck(page, route)
+test.describe('officer a11y (fresh fixture)', () => {
+  let officer
+  test.beforeAll(() => { officer = provisionOfficer() })
+  test.afterAll(() => deprovisionOfficer(officer?.uid))
+  test.beforeEach(async ({ page }) => {
+    await login(page, { username: officer.uid, password: officer.password })
   })
-}
+
+  for (const route of officerRoutes) {
+    test(`officer a11y ${route}`, async ({ page }) => {
+      await axeCheck(page, route)
+    })
+  }
+})
 
 test('public pages set strict CSP and no-store', async ({ page }) => {
   const res = await page.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })

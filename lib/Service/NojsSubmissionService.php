@@ -64,7 +64,12 @@ class NojsSubmissionService
 		try {
 			$wraps = [];
 			foreach ($this->officerKeys->activePubkeys() as $o) {
-				$wraps[$o['uid']] = $this->envelope->sealToPubkey($caseKey, $o['pubkey']);
+				// fp pins each wrap to the key version it was sealed against —
+				// storeWraps rejects wraps minted against a rotated key.
+				$wraps[$o['uid']] = [
+					'wrap' => $this->envelope->sealToPubkey($caseKey, $o['pubkey']),
+					'fp' => $o['fingerprint'],
+				];
 			}
 			if ($wraps === []) {
 				throw new ValidationException('no_officers', 'Channel is not ready', ['body' => 'channel not ready']);

@@ -112,6 +112,7 @@
         "Passphrases do not match.": "Passphrases do not match.",
         "Pause retention deletion": "Pause retention deletion",
         "Please fill in the highlighted fields.": "Please fill in the highlighted fields.",
+        "Please wait a moment": "Please wait a moment",
         "PoW escalation after N hits over limit": "PoW escalation after N hits over limit",
         "Reason": "Reason",
         "Receipt confirmed.": "Receipt confirmed.",
@@ -145,6 +146,7 @@
         "Settings sections": "Settings sections",
         "Showing the 500 most recent cases.": "Showing the 500 most recent cases.",
         "Skip to case access": "Skip to case access",
+        "Skip to content": "Skip to content",
         "Skip to report form": "Skip to report form",
         "Someone else changed this case — reloading.": "Someone else changed this case — reloading.",
         "Something went wrong. Please try again.": "Something went wrong. Please try again.",
@@ -160,8 +162,10 @@
         "This case is end-to-end encrypted. Enter your passphrase to read it.": "This case is end-to-end encrypted. Enter your passphrase to read it.",
         "This case is not encrypted for your key — another officer must re-grant access.": "This case is not encrypted for your key — another officer must re-grant access.",
         "This channel is not ready yet. Please try again later.": "This channel is not ready yet. Please try again later.",
+        "This protects the reporting channel against abuse. You can try again in about {n} seconds.": "This protects the reporting channel against abuse. You can try again in about {n} seconds.",
         "This report was encrypted on our server (JavaScript was off).": "This report was encrypted on our server (JavaScript was off).",
         "Time": "Time",
+        "Too many requests — please try again later.": "Too many requests — please try again later.",
         "Total cases:": "Total cases:",
         "Try again": "Try again",
         "Unassigned": "Unassigned",
@@ -188,7 +192,13 @@
         "close_pending_other": "\"{t}\" requested by {by} — click the same button to confirm.",
         "close_pending_self": "\"{t}\" requested — a second officer must confirm.",
         "close_pending_toast": "Request recorded — a second officer must confirm.",
-        "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.": "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway."
+        "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.": "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.",
+        "Grant access": "Grant access",
+        "Access granted.": "Access granted.",
+        "These officers can no longer read this case (for example after a key change without re-encryption). Granting re-seals the case key to their current key.": "These officers can no longer read this case (for example after a key change without re-encryption). Granting re-seals the case key to their current key.",
+        "Reply sent.": "Reply sent.",
+        "Please check the highlighted fields.": "Please check the highlighted fields.",
+        "Request recorded — a second officer must confirm.": "Request recorded — a second officer must confirm."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

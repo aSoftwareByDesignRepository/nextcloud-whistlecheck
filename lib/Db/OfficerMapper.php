@@ -33,6 +33,26 @@ class OfficerMapper extends QBMapper
 		}
 	}
 
+	/**
+	 * Locking read — FOR UPDATE reads bypass the REPEATABLE READ snapshot and
+	 * take the row lock, so a wrap check-and-insert serializes against a
+	 * concurrent rotation's UPDATE of the same officer row.
+	 */
+	public function findByUidForUpdate(string $uid): ?Officer
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())
+			->where($qb->expr()->eq('uid', $qb->createNamedParameter($uid)));
+		$stmt = $this->db->executeQuery(
+			$qb->getSQL() . ' FOR UPDATE',
+			$qb->getParameters(),
+			$qb->getParameterTypes(),
+		);
+		$row = $stmt->fetch();
+		$stmt->closeCursor();
+		return $row === false ? null : $this->mapRowToEntity($row);
+	}
+
 	/** @return list<Officer> */
 	public function findActive(): array
 	{

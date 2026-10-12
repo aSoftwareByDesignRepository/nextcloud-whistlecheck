@@ -27,19 +27,6 @@ if (existsSync(envFile)) {
 }
 
 const baseURL = process.env.NC_BASE_URL || 'http://localhost:8081'
-const AUTH_FILE = 'e2e/.auth/officer.json'
-
-function hasOfficerCreds() {
-  const pair = (user, pass) => Boolean(user && pass)
-  return pair(process.env.E2E_USER, process.env.E2E_PASSWORD || process.env.E2E_PASS)
-    || pair(process.env.NC_ADMIN_USER, process.env.NC_ADMIN_PASS || process.env.NC_ADMIN_PASSWORD)
-    || pair(process.env.NC_OFFICER_USER, process.env.NC_OFFICER_PASS || process.env.NC_OFFICER_PASSWORD)
-}
-
-const chromiumUse = { ...devices['Desktop Chrome'] }
-if (hasOfficerCreds()) {
-  chromiumUse.storageState = AUTH_FILE
-}
 
 export default defineConfig({
   testDir: 'e2e',
@@ -54,17 +41,11 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  projects: hasOfficerCreds()
-    ? [
-      { name: 'setup', testMatch: /auth\.setup\.js/ },
-      {
-        name: 'chromium',
-        dependencies: ['setup'],
-        testIgnore: /auth\.setup\.js/,
-        use: chromiumUse,
-      },
-    ]
-    : [
-      { name: 'chromium', testIgnore: /auth\.setup\.js/, use: chromiumUse },
-    ],
+  // No auth setup project / shared storageState: every officer spec
+  // provisions a unique throwaway officer (helpers/officer.js) — a shared
+  // uid is unsafe on a machine where a parallel run can rotate the key or
+  // reset the password mid-test and invalidate the session.
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+  ],
 })
