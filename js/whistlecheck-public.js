@@ -272,21 +272,27 @@
 			replyForm.hidden = false;
 			replyForm.addEventListener('submit', async (ev) => {
 				ev.preventDefault();
+				const btn = replyForm.querySelector('[type=submit]');
 				const text = replyForm.querySelector('[name=body]').value.trim();
 				if (!text) return;
-				const cipher = await C.seal(text, caseKey);
-				const res = await api('/api/public/case/reply', { hint, verifier, cipher });
-				const json = await safeJson(res);
-				if (res.ok && json && json.success) {
-					replyForm.querySelector('[name=body]').value = '';
-					const li = document.createElement('li');
-					li.className = 'wc-msg wc-msg-me';
-					const p = document.createElement('p');
-					p.textContent = text;
-					li.appendChild(p);
-					list.appendChild(li);
-				} else {
-					showError((json && json.message) || t('err_generic', 'Something went wrong.'));
+				btn.disabled = true;
+				try {
+					const cipher = await C.seal(text, caseKey);
+					const res = await api('/api/public/case/reply', { hint, verifier, cipher });
+					const json = await safeJson(res);
+					if (res.ok && json && json.success) {
+						replyForm.querySelector('[name=body]').value = '';
+						const li = document.createElement('li');
+						li.className = 'wc-msg wc-msg-me';
+						const p = document.createElement('p');
+						p.textContent = text;
+						li.appendChild(p);
+						list.appendChild(li);
+					} else {
+						showError((json && json.message) || t('err_generic', 'Something went wrong.'));
+					}
+				} finally {
+					btn.disabled = false;
 				}
 			}, { once: false });
 		}
@@ -294,10 +300,41 @@
 
 	// ── boot ─────────────────────────────────────────────────────────────
 
+	// ── case code input: forgiving formatting ────────────────────────────
+	// Live-normalize into XXXXX-XXXXX-… groups — dashes/spaces/paste errors
+	// are stripped automatically; decode() already maps O→0, I/L→1.
+	function bindCodeInput(input) {
+		input.addEventListener('input', () => {
+			const clean = input.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 26);
+			input.value = clean.replace(/(.{5})(?=.)/g, '$1-');
+		});
+	}
+
+	function copyCode(btn) {
+		const val = document.querySelector('#wc-code-panel .wc-code-value');
+		if (!val || !val.textContent) return;
+		const done = () => { btn.textContent = t('copied', 'Copied.'); };
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(val.textContent).then(done, done);
+			return;
+		}
+		const ta = document.createElement('textarea');
+		ta.value = val.textContent;
+		document.body.appendChild(ta);
+		ta.select();
+		try { document.execCommand('copy'); } catch (e) { /* noop */ }
+		ta.remove();
+		done();
+	}
+
 	document.addEventListener('DOMContentLoaded', () => {
 		if (window.CheckFieldErrors) window.CheckFieldErrors.install({ prefix: 'wc' });
 		const reportForm = document.getElementById('wc-report-form');
 		const followForm = document.getElementById('wc-follow-form');
+		const codeInput = document.getElementById('wc-code');
+		if (codeInput) bindCodeInput(codeInput);
+		const copyBtn = document.querySelector('[data-wc-copy-code]');
+		if (copyBtn) copyBtn.addEventListener('click', () => copyCode(copyBtn));
 		const e2eCapable = !!(window.sodium && window.crypto && window.crypto.randomUUID);
 
 		// Honesty: JS + libsodium present → E2E badge; else the no-JS form

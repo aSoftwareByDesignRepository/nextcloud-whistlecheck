@@ -1,17 +1,40 @@
 <?php
 /** @var \OCP\IL10N $l */
 declare(strict_types=1);
+$_['wc_nav_current'] = 'officers';
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>
-	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>" data-wc-page="officers"
-	data-wc-uid="<?php p($_['wc_uid'] ?? ''); ?>">
+<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>"
+	data-wc-page="officers"
+	data-wc-uid="<?php p($_['wc_uid'] ?? ''); ?>"
+	data-wc-officers="<?php p(json_encode($_['officers'] ?? [])); ?>">
+	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>
 	<div class="wc-app-wrap" id="wc-main">
-		<h1><?php p($l->t('Case officers')); ?></h1>
-		<section data-wc-keyreg hidden class="wc-panel">
-			<h2><?php p($l->t('Set up your key')); ?></h2>
-			<p><?php p($l->t('Generate your encryption key. The private key stays in this browser, wrapped by your passphrase. The server only sees the public key. If you lose the passphrase and no other officer remains, case content is unrecoverable.')); ?></p>
+		<header class="wc-app-header">
+			<h1><?php p($l->t('Case officers')); ?></h1>
+			<?php include __DIR__ . '/parts/nav.php'; ?>
+		</header>
+
+		<section data-wc-keyreg class="wc-panel" aria-labelledby="wc-keyreg-heading">
+			<h2 id="wc-keyreg-heading" data-wc-keyreg-title><?php p($l->t('Set up your key')); ?></h2>
+			<p data-wc-keyreg-copy><?php p($l->t('Generate your encryption key. The private key stays in this browser, wrapped by your passphrase. The server only sees the public key. If you lose the passphrase and no other officer remains, case content is unrecoverable.')); ?></p>
+			<p class="wc-honesty" data-wc-rotate-warn hidden></p>
+			<div class="wc-field" data-wc-oldpass-wrap hidden>
+				<label for="wc-oldpass"><?php p($l->t('Current passphrase (keeps your cases accessible)')); ?></label>
+				<input id="wc-oldpass" type="password" autocomplete="current-password" data-wc-oldpass>
+			</div>
+			<div class="wc-field">
+				<label for="wc-newpass"><?php p($l->t('New passphrase (at least 10 characters)')); ?></label>
+				<input id="wc-newpass" type="password" autocomplete="new-password" data-wc-newpass>
+			</div>
+			<div class="wc-field">
+				<label for="wc-newpass2"><?php p($l->t('Repeat new passphrase')); ?></label>
+				<input id="wc-newpass2" type="password" autocomplete="new-password" data-wc-newpass2>
+			</div>
+			<p class="wc-field-error" data-wc-keyreg-err role="alert" hidden></p>
 			<button type="button" class="wc-btn-primary" data-wc-genkey><?php p($l->t('Generate my key')); ?></button>
 		</section>
+
+		<h2><?php p($l->t('All officers')); ?></h2>
 		<table class="wc-table">
 			<thead><tr>
 				<th scope="col"><?php p($l->t('User')); ?></th>
@@ -20,7 +43,9 @@ declare(strict_types=1);
 				<th scope="col"><?php p($l->t('Key version')); ?></th>
 				<th scope="col"><span class="hidden-visually"><?php p($l->t('Actions')); ?></span></th>
 			</tr></thead>
-			<tbody data-wc-officers></tbody>
+			<tbody data-wc-officers aria-busy="true">
+				<tr><td colspan="5" class="wc-loading"><?php p($l->t('Loading…')); ?></td></tr>
+			</tbody>
 		</table>
 	</div>
 </div>

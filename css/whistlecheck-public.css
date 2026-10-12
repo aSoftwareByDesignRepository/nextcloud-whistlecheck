@@ -187,3 +187,13 @@
 @media (prefers-reduced-motion: reduce) {
 	.wc-public * { transition: none !important; animation: none !important; }
 }
+
+/* ── Bachus UX pass: code input + copy affordance ── */
+
+#wc-code {
+	font-family: monospace;
+	font-size: 1.15em;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+.wc-code-panel .wc-btn-secondary { margin-top: 8px; }

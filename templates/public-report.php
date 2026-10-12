@@ -88,10 +88,17 @@ $fields = $_['fields'] ?? [];
 			<button type="submit" class="wc-btn-primary"><?php p($l->t('Send report')); ?></button>
 		</form>
 
-		<section id="wc-code-panel" class="wc-code-panel" hidden tabindex="-1" aria-live="polite">
-			<h2><?php p($l->t('Your case code')); ?></h2>
+		<section id="wc-code-panel" class="wc-code-panel" hidden tabindex="-1" aria-live="polite"
+			data-wc-follow-url="<?php p($_['urlGenerator']->linkToRoute('whistlecheck.publicPage.followForm')); ?>">
+			<h2><?php p($l->t('Report received')); ?></h2>
+			<p class="wc-honesty" role="note"><?php p($l->t('Your report is saved. Keep your case code safe — it is the only way back in.')); ?></p>
+			<h3><?php p($l->t('Your case code')); ?></h3>
 			<p class="wc-code-value" aria-label="<?php p($l->t('Case code')); ?>"></p>
-			<p><?php p($l->t('Write this code down and keep it safe. It is shown only once and cannot be recovered. You need it to read answers.')); ?></p>
+			<p>
+				<button type="button" class="wc-btn-secondary" data-wc-copy-code><?php p($l->t('Copy code')); ?></button>
+			</p>
+			<p class="wc-hint"><?php p($l->t('Write this code down and keep it safe. It is shown only once and cannot be recovered. You need it to read answers.')); ?></p>
+			<p><a class="wc-btn-secondary" data-wc-goto-follow href="<?php p($_['urlGenerator']->linkToRoute('whistlecheck.publicPage.followForm')); ?>"><?php p($l->t('Check your case later')); ?></a></p>
 		</section>
 	</main>
 </div>

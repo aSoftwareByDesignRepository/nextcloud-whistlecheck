@@ -188,8 +188,10 @@
 	font-family: monospace;
 	word-break: break-all;
 }
-.wc-ok { color: var(--color-success); }
-.wc-bad { color: var(--color-error); }
+/* --color-success/--color-error are theme *tints* (light fills) — as text on
+   white they fail WCAG 1.4.3. Use dedicated text shades (≥4.5:1 on #fff). */
+.wc-ok { color: #157f2f; }
+.wc-bad { color: #b3261e; }
 .wc-attachment { min-height: 44px; }
 
 #wc-toasts {
@@ -286,4 +288,69 @@
 	padding: 8px 16px;
 	border-radius: var(--border-radius);
 	font-weight: 600;
+}
+
+/* ── Bachus UX pass: unlock panel, load states, responsive cards ── */
+
+.wc-unlock {
+	border: 2px solid var(--color-primary-element);
+	margin-bottom: 24px;
+}
+.wc-unlock h2 { margin-top: 0; }
+.wc-unlock .wc-btn-primary { width: 100%; }
+
+.wc-loading {
+	padding: 24px 12px;
+	color: var(--color-text-maxcontrast);
+	font-style: italic;
+}
+.wc-load-error {
+	padding: 14px;
+	color: var(--color-error);
+	font-weight: 600;
+}
+.wc-btn-inline { min-height: 36px; padding: 0 14px; width: auto !important; }
+
+.wc-devices { list-style: none; padding: 0; margin: 0 0 20px; }
+.wc-devices li {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	min-height: 44px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.wc-nav-sub { margin-top: -8px; }
+.wc-nav-sub a { min-height: 36px; font-size: 0.92em; }
+
+/* Mobile: inbox table becomes a stack of big tappable cards */
+@media (max-width: 768px) {
+	.wc-table-cards thead { display: none; }
+	.wc-table-cards, .wc-table-cards tbody, .wc-table-cards tr { display: block; overflow: visible; }
+	.wc-table-cards tr {
+		border: 1px solid var(--color-border);
+		border-radius: var(--border-radius-container);
+		margin-bottom: 12px;
+		padding: 10px 14px;
+	}
+	.wc-table-cards td {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		border: none;
+		padding: 6px 0;
+		min-height: 32px;
+	}
+	.wc-table-cards td::before {
+		content: attr(data-label);
+		font-weight: 700;
+		font-size: 0.85em;
+		color: var(--color-text-maxcontrast);
+	}
+	.wc-table-cards td.wc-col-title { font-weight: 700; font-size: 1.05em; }
+	.wc-table-cards td.wc-load-error { display: block; }
+	.wc-table-cards td.wc-load-error::before { content: none; }
 }

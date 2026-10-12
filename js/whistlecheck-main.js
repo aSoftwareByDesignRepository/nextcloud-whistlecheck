@@ -24,9 +24,8 @@
 			method: opts.method || 'GET',
 			credentials: 'same-origin',
 			headers: Object.assign(
-				{ 'Accept': 'application/json' },
-				opts.body ? { 'Content-Type': 'application/json' } : {},
-				opts.method && opts.method !== 'GET' ? { 'requesttoken': OC.requestToken } : {}),
+				{ 'Accept': 'application/json', 'requesttoken': OC.requestToken },
+				opts.body ? { 'Content-Type': 'application/json' } : {}),
 			body: opts.body ? JSON.stringify(opts.body) : undefined,
 		}).then(async (res) => {
 			const json = await res.json().catch(() => null);
@@ -50,7 +49,7 @@
 		if (!host) {
 			host = document.createElement('div');
 			host.id = 'wc-toasts';
-			host.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+			host.setAttribute('aria-live', 'polite');
 			document.body.appendChild(host);
 		}
 		const key = kind + '|' + text;
@@ -70,6 +69,40 @@
 		if (toastState[key]) { toastState[key].el.remove(); delete toastState[key]; }
 	}
 
+	function copyText(text) {
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			return navigator.clipboard.writeText(text);
+		}
+		const ta = document.createElement('textarea');
+		ta.value = text;
+		document.body.appendChild(ta);
+		ta.select();
+		try { document.execCommand('copy'); } catch (e) { /* noop */ }
+		ta.remove();
+		return Promise.resolve();
+	}
+
+	// ── loading / error states ───────────────────────────────────────────
+
+	/** Swap a tbody/list's loading row for an error row with a retry button. */
+	function showLoadError(container, colSpan, retry) {
+		container.innerHTML = '';
+		const tr = document.createElement('tr');
+		const td = document.createElement('td');
+		td.colSpan = colSpan;
+		td.className = 'wc-load-error';
+		td.appendChild(document.createTextNode(t('err_load', 'Could not load. ')));
+		const btn = document.createElement('button');
+		btn.type = 'button';
+		btn.className = 'wc-btn-secondary wc-btn-inline';
+		btn.textContent = t('retry', 'Try again');
+		btn.addEventListener('click', retry);
+		td.appendChild(btn);
+		tr.appendChild(td);
+		container.appendChild(tr);
+		container.removeAttribute('aria-busy');
+	}
+
 	// ── officer key handling ─────────────────────────────────────────────
 
 	const LS_PRIV = 'wc_priv_wrapped';
@@ -77,119 +110,280 @@
 	function storedKeyBlob(uid) {
 		try { return localStorage.getItem(LS_PRIV + '_' + uid); } catch (e) { return null; }
 	}
-
-	async function unlockPrivateKey() {
-		const uid = boot().dataset.wcUid;
-		const blob = storedKeyBlob(uid);
-		if (!blob) return null;
-		const pass = sessionStorage.getItem('wc_pass');
-		if (!pass) {
-			const entered = window.prompt(t('prompt_pass', 'Enter your WhistleCheck passphrase'));
-			if (!entered) return null;
-			sessionStorage.setItem('wc_pass', entered);
-		}
-		const priv = await window.WcCrypto.unwrapPrivateKey(blob, sessionStorage.getItem('wc_pass'));
-		if (!priv) {
-			sessionStorage.removeItem('wc_pass');
-			toast('error', t('err_pass', 'Wrong passphrase — try again.'));
-		}
-		return priv;
+	function localSet(key, value) {
+		try { localStorage.setItem(key, value); return true; } catch (e) { return false; }
+	}
+	function sessGet(key) {
+		try { return sessionStorage.getItem(key); } catch (e) { return null; }
+	}
+	function sessSet(key, value) {
+		try { sessionStorage.setItem(key, value); } catch (e) { /* storage blocked */ }
+	}
+	function sessDel(key) {
+		try { sessionStorage.removeItem(key); } catch (e) { /* storage blocked */ }
 	}
 
-	// ── inbox ────────────────────────────────────────────────────────────
+	let pendingUnlock = null;
+	// Listeners bind exactly once per page load; the in-flight prompt's state
+	// lives in unlockCtx so a second prompt never stacks stale handlers.
+	let unlockCtx = null;
 
-	async function initInbox(root) {
-		const tbody = root.querySelector('[data-wc-inbox]');
-		const data = await api('/api/inbox');
-		tbody.innerHTML = '';
-		const priv = await unlockPrivateKey();
-		const me = boot().dataset.wcUid;
-		for (const c of data.cases) {
-			const tr = document.createElement('tr');
-			tr.tabIndex = 0;
-			tr.dataset.caseId = c.id;
+	/**
+	 * Resolve the officer's unwrapped private key. Uses the session-cached
+	 * passphrase first; otherwise shows the inline unlock panel and resolves
+	 * only when the passphrase verifies — never a modal window.prompt.
+	 */
+	function unlockPrivateKey() {
+		const uid = boot().wcUid;
+		const blob = storedKeyBlob(uid);
+		if (!blob) return Promise.resolve(null);
+		const cached = sessGet('wc_pass');
+		if (cached) {
+			return window.WcCrypto.unwrapPrivateKey(blob, cached).then((priv) => {
+				if (priv) return priv;
+				sessDel('wc_pass');
+				return promptInline(blob);
+			});
+		}
+		return promptInline(blob);
+	}
 
-			const titleTd = document.createElement('td');
-			titleTd.className = 'wc-col-title';
-			let title = t('case_fallback_title', 'Case #') + c.id;
-			if (priv && c.wrap && c.title_cipher) {
-				const key = await window.WcCrypto.openSealed(c.wrap,
-					(await pubKey(me)), priv);
-				if (key) {
-					const dec = await window.WcCrypto.open(c.title_cipher, key);
-					if (dec) title = dec;
+	function promptInline(blob) {
+		if (pendingUnlock) return pendingUnlock;
+		const panel = document.querySelector('[data-wc-unlock]');
+		if (!panel) return Promise.resolve(null);
+		const input = panel.querySelector('[data-wc-unlock-pass]');
+		const err = panel.querySelector('[data-wc-unlock-err]');
+		const btn = panel.querySelector('[data-wc-unlock-go]');
+		if (!input || !btn) return Promise.resolve(null);
+		pendingUnlock = new Promise((resolve) => { unlockCtx = { blob, resolve, busy: false }; });
+		if (!panel.dataset.wcBound) {
+			panel.dataset.wcBound = '1';
+			const attempt = async () => {
+				const ctx = unlockCtx;
+				if (!ctx || ctx.busy) return;
+				const pass = input.value;
+				if (!pass) { input.focus(); return; }
+				ctx.busy = true;
+				btn.disabled = true;
+				if (err) err.hidden = true;
+				input.removeAttribute('aria-invalid');
+				try {
+					const priv = await window.WcCrypto.unwrapPrivateKey(ctx.blob, pass);
+					if (priv) {
+						sessSet('wc_pass', pass);
+						input.value = '';
+						panel.hidden = true;
+						pendingUnlock = null;
+						unlockCtx = null;
+						ctx.resolve(priv);
+					} else if (err) {
+						err.textContent = t('err_pass', 'Wrong passphrase — try again.');
+						err.hidden = false;
+						input.setAttribute('aria-invalid', 'true');
+						input.select();
+					}
+				} catch (e) {
+					if (err) {
+						err.textContent = t('err_generic', 'Something went wrong. Please try again.');
+						err.hidden = false;
+					}
+				} finally {
+					ctx.busy = false;
+					btn.disabled = false;
 				}
-			} else if (!c.wrap) {
-				title = t('case_locked', 'Case #') + c.id + ' — ' + t('locked', 'locked');
-			}
-			titleTd.textContent = title;
-			tr.appendChild(titleTd);
-
-			const statusTd = document.createElement('td');
-			const badge = document.createElement('span');
-			badge.className = 'wc-status wc-status-' + c.status;
-			badge.textContent = t('status_' + c.status, c.status);
-			statusTd.appendChild(badge);
-			if (c.overdue) {
-				const o = document.createElement('span');
-				o.className = 'wc-badge-overdue';
-				o.textContent = ' ' + t('overdue', 'OVERDUE');
-				statusTd.appendChild(o);
-			}
-			tr.appendChild(statusTd);
-
-			const dueTd = document.createElement('td');
-			dueTd.textContent = c.feedback_due + (c.days_until_due !== null ? ' (' + c.days_until_due + 'd)' : '');
-			tr.appendChild(dueTd);
-
-			const recvTd = document.createElement('td');
-			recvTd.textContent = c.received_at.slice(0, 10);
-			tr.appendChild(recvTd);
-
-			const assTd = document.createElement('td');
-			assTd.textContent = c.assigned_to || '—';
-			tr.appendChild(assTd);
-
-			tr.addEventListener('click', () => { location.href = base + '/cases/' + c.id; });
-			tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') tr.click(); });
-			tbody.appendChild(tr);
+			};
+			btn.addEventListener('click', attempt);
+			input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); attempt(); } });
 		}
-		if (data.cases.length === 0) {
-			const tr = document.createElement('tr');
-			const td = document.createElement('td');
-			td.colSpan = 5;
-			td.textContent = t('inbox_empty', 'No cases yet.');
-			tr.appendChild(td);
-			tbody.appendChild(tr);
-		}
+		panel.hidden = false;
+		input.value = '';
+		if (err) { err.hidden = true; err.textContent = ''; }
+		input.removeAttribute('aria-invalid');
+		input.focus();
+		return pendingUnlock;
 	}
 
 	async function pubKey(uid) {
 		const s = await window.WcCrypto.sodium();
-		const officers = JSON.parse(boot().dataset.wcOfficers || '[]');
+		let officers = [];
+		try { officers = JSON.parse(boot().wcOfficers || '[]'); } catch (e) { return null; }
 		const me = officers.find((o) => o.uid === uid);
-		return me ? s.from_base64(me.pubkey, s.base64_variants.ORIGINAL) : null;
+		try {
+			return me && me.pubkey ? s.from_base64(me.pubkey, s.base64_variants.ORIGINAL) : null;
+		} catch (e) {
+			return null;
+		}
+	}
+
+	// ── inbox ────────────────────────────────────────────────────────────
+
+	// Latest initInbox call wins: the unlock-triggered re-render must not be
+	// overwritten by an older in-flight fetch resolving after it.
+	let inboxSeq = 0;
+
+	async function initInbox(root) {
+		const tbody = root.querySelector('[data-wc-inbox]');
+		if (!tbody) return;
+		const seq = ++inboxSeq;
+		const me = boot().wcUid;
+
+		// Never block the list on the unlock prompt: try the session-cached
+		// passphrase silently; otherwise show the panel and re-render titles
+		// once the officer unlocks.
+		let priv = null;
+		const blob = storedKeyBlob(me);
+		if (blob) {
+			const cached = sessGet('wc_pass');
+			if (cached) {
+				priv = await window.WcCrypto.unwrapPrivateKey(blob, cached);
+				if (!priv) sessDel('wc_pass');
+			}
+			if (!priv) {
+				unlockPrivateKey().then((k) => { if (k && seq === inboxSeq) initInbox(root); }).catch(() => {});
+			}
+		}
+
+		try {
+			const data = await api('/api/inbox');
+			if (seq !== inboxSeq) return;
+			tbody.innerHTML = '';
+			tbody.removeAttribute('aria-busy');
+			const myPub = priv ? await pubKey(me) : null;
+			for (const c of (data.cases || [])) {
+				if (seq !== inboxSeq) return;
+				tbody.appendChild(await inboxRow(c, priv, myPub));
+			}
+			if (!data.cases || data.cases.length === 0) {
+				const tr = document.createElement('tr');
+				const td = document.createElement('td');
+				td.colSpan = 5;
+				td.textContent = t('inbox_empty', 'No cases yet.');
+				tr.appendChild(td);
+				tbody.appendChild(tr);
+			}
+			const trunc = root.querySelector('[data-wc-truncated]');
+			if (trunc) trunc.hidden = !data.truncated;
+		} catch (e) {
+			if (seq === inboxSeq) showLoadError(tbody, 5, () => initInbox(root));
+		}
+	}
+
+	async function inboxRow(c, priv, myPub) {
+		const tr = document.createElement('tr');
+		tr.dataset.caseId = c.id;
+
+		const titleTd = document.createElement('td');
+		titleTd.className = 'wc-col-title';
+		titleTd.dataset.label = t('col_case', 'Case');
+		let title = t('case_fallback_title', 'Case #') + c.id;
+		if (priv && c.wrap && c.title_cipher && myPub) {
+			const key = await window.WcCrypto.openSealed(c.wrap, myPub, priv);
+			if (key) {
+				const dec = await window.WcCrypto.open(c.title_cipher, key);
+				if (dec) title = dec;
+			}
+		} else if (!c.wrap || !priv) {
+			title += ' — ' + t('locked', 'locked');
+		}
+		// A real anchor in the title cell carries the native semantics
+		// (keyboard activation, open-in-new-tab, screen-reader "link") while
+		// the row click stays a pointer convenience — no fake role on <tr>.
+		const link = document.createElement('a');
+		link.href = base + '/cases/' + c.id;
+		link.className = 'wc-case-link';
+		link.textContent = title;
+		titleTd.appendChild(link);
+		tr.appendChild(titleTd);
+
+		const statusTd = document.createElement('td');
+		statusTd.dataset.label = t('col_status', 'Status');
+		const badge = document.createElement('span');
+		badge.className = 'wc-status wc-status-' + c.status;
+		badge.textContent = t('status_' + c.status, c.status);
+		statusTd.appendChild(badge);
+		if (c.overdue) {
+			const o = document.createElement('span');
+			o.className = 'wc-badge-overdue';
+			o.textContent = ' ' + t('overdue', 'OVERDUE');
+			statusTd.appendChild(o);
+		}
+		tr.appendChild(statusTd);
+
+		const dueTd = document.createElement('td');
+		dueTd.dataset.label = t('col_due', 'Feedback due');
+		const due = c.feedback_due ?? '—';
+		dueTd.textContent = due + (c.days_until_due !== null && c.days_until_due !== undefined ? ' (' + c.days_until_due + 'd)' : '');
+		tr.appendChild(dueTd);
+
+		const recvTd = document.createElement('td');
+		recvTd.dataset.label = t('col_received', 'Received');
+		recvTd.textContent = String(c.received_at || '—').slice(0, 10);
+		tr.appendChild(recvTd);
+
+		const assTd = document.createElement('td');
+		assTd.dataset.label = t('col_assigned', 'Assigned');
+		assTd.textContent = c.assigned_to || '—';
+		tr.appendChild(assTd);
+
+		// Pointer convenience only — the title link already provides
+		// keyboard/AT activation; skip it so a link click doesn't fire twice.
+		tr.addEventListener('click', (e) => {
+			if (e.target.closest('a, button')) return;
+			location.href = base + '/cases/' + c.id;
+		});
+		return tr;
 	}
 
 	// ── case view ────────────────────────────────────────────────────────
 
 	async function initCase(root) {
-		const caseId = parseInt(root.dataset.caseId, 10);
-		const data = await api('/api/cases/' + caseId);
+		const caseId = parseInt(root.dataset.wcCaseId, 10);
+		const body = root.querySelector('[data-wc-case-body]');
+		const loading = root.querySelector('[data-wc-loading]');
+		const done = () => { if (loading) loading.hidden = true; body.removeAttribute('aria-busy'); };
+
+		const showError = (msg) => {
+			const errEl = document.createElement('p');
+			errEl.className = 'wc-error';
+			errEl.setAttribute('role', 'alert');
+			errEl.textContent = msg;
+			body.prepend(errEl);
+		};
+
+		let data;
+		try {
+			data = await api('/api/cases/' + caseId);
+		} catch (e) {
+			done();
+			showError((e.payload && e.payload.message) || t('err_generic', 'Something went wrong. Please try again.'));
+			return;
+		}
+		// Fetch is done — the visible blocker is now the unlock panel
+		// (user action), not the spinner. aria-busy must reflect that.
+		done();
+		const me = boot().wcUid;
+		root.dataset.revision = data.revision;
+		renderClosePending(root, data.close_requested_by, data.close_requested_to, me);
+
 		const priv = await unlockPrivateKey();
 		if (!priv) {
 			toast('error', t('err_nokey', 'Unlock your key to read this case.'));
 			return;
 		}
-		const me = boot().dataset.wcUid;
-		const pk = await pubKey(me);
-		const caseKey = await window.WcCrypto.openSealed(data.wrap, pk, priv);
-		if (!caseKey) {
-			toast('error', t('err_decrypt', 'Decryption failed.'));
+		// No wrap row = the case was never granted to this officer's key
+		// (e.g. key rotated without re-wrap) — a grant problem, not a
+		// decryption failure.
+		if (!data.wrap) {
+			showError(t('err_nowrap', 'This case is not encrypted for your key — another officer must re-grant access.'));
 			return;
 		}
-		root.dataset.revision = data.revision;
-		renderClosePending(data.close_requested_by, data.close_requested_to, me);
+		const pk = await pubKey(me);
+		const caseKey = pk ? await window.WcCrypto.openSealed(data.wrap, pk, priv) : null;
+		if (!caseKey) {
+			showError(t('err_decrypt', 'Decryption failed.'));
+			return;
+		}
 
 		if (data.title_cipher) {
 			const title = await window.WcCrypto.open(data.title_cipher, caseKey);
@@ -202,12 +396,25 @@
 			if (el && c) { el.textContent = c; el.closest('[data-wc-contact-block]').hidden = false; }
 		}
 
+		const badge = root.querySelector('[data-wc-status-badge]');
+		if (badge) { badge.textContent = t('status_' + data.status, data.status); badge.className = 'wc-status wc-status-' + data.status; }
+		const assignSel = root.querySelector('[data-wc-assign]');
+		if (assignSel) assignSel.value = data.assigned_to || '';
+
 		const list = root.querySelector('[data-wc-messages]');
-		for (const m of data.messages) {
+		for (const m of (data.messages || [])) {
 			const plain = await window.WcCrypto.open(m.cipher, caseKey);
 			list.appendChild(renderMsg(m.direction, plain === 'wchk:receipt' ? t('receipt_text', 'Receipt confirmed.') : plain, m.at, m.author));
 		}
-		for (const a of data.attachments) {
+		const attList = root.querySelector('[data-wc-attachments]');
+		const attachments = data.attachments || [];
+		if (attachments.length === 0) {
+			const li = document.createElement('li');
+			li.className = 'wc-hint';
+			li.textContent = t('no_attachments', 'No attachments.');
+			attList.appendChild(li);
+		}
+		for (const a of attachments) {
 			const name = a.name_cipher ? await window.WcCrypto.open(a.name_cipher, caseKey) : 'attachment #' + a.id;
 			const li = document.createElement('li');
 			const btn = document.createElement('button');
@@ -226,9 +433,9 @@
 				URL.revokeObjectURL(url);
 			});
 			li.appendChild(btn);
-			root.querySelector('[data-wc-attachments]').appendChild(li);
+			attList.appendChild(li);
 		}
-		for (const n of data.notes) {
+		for (const n of (data.notes || [])) {
 			const plain = await window.WcCrypto.open(n.cipher, caseKey);
 			root.querySelector('[data-wc-notes]').appendChild(renderMsg('note', plain, n.at, n.author));
 		}
@@ -248,7 +455,21 @@
 		return li;
 	}
 
+	function renderClosePending(root, by, to, me) {
+		const el = root.querySelector('[data-wc-close-pending]');
+		if (!el) return;
+		if (!by) { el.hidden = true; return; }
+		el.hidden = false;
+		const label = t('status_' + to, to);
+		const raw = by === me
+			? t('close_pending_self', '"{t}" requested — a second officer must confirm.')
+			: t('close_pending_other', '"{t}" requested by {by} — click the same button to confirm.');
+		el.querySelector('[data-wc-close-pending-text]').textContent =
+			raw.replace('{t}', label).replace('{by}', by);
+	}
+
 	function bindCaseActions(root, data, caseKey) {
+		const me = boot().wcUid;
 		let revision = data.revision;
 		const refreshRev = (d) => { revision = d.revision; root.dataset.revision = revision; };
 
@@ -256,17 +477,21 @@
 		if (replyForm) {
 			replyForm.addEventListener('submit', async (ev) => {
 				ev.preventDefault();
+				const btn = replyForm.querySelector('[type=submit]');
 				const text = replyForm.querySelector('[name=body]').value.trim();
 				if (!text) return;
+				btn.disabled = true;
 				try {
 					const cipher = await window.WcCrypto.seal(text, caseKey);
 					const res = await api('/api/cases/' + data.id + '/messages', { method: 'POST', body: { cipher, revision } });
 					refreshRev(res);
 					replyForm.querySelector('[name=body]').value = '';
-					root.querySelector('[data-wc-messages]').appendChild(renderMsg('officer', text, new Date().toISOString(), boot().dataset.wcUid));
+					root.querySelector('[data-wc-messages]').appendChild(renderMsg('officer', text, new Date().toISOString(), me));
 				} catch (e) {
 					toast('error', e.payload && e.status === 409 ? t('err_conflict', 'Someone else changed this case — reloading.') : e.message);
 					if (e.status === 409) location.reload();
+				} finally {
+					btn.disabled = false;
 				}
 			});
 		}
@@ -275,41 +500,40 @@
 		if (noteForm) {
 			noteForm.addEventListener('submit', async (ev) => {
 				ev.preventDefault();
+				const btn = noteForm.querySelector('[type=submit]');
 				const text = noteForm.querySelector('[name=note]').value.trim();
 				if (!text) return;
-				const cipher = await window.WcCrypto.seal(text, caseKey);
-				await api('/api/cases/' + data.id + '/notes', { method: 'POST', body: { cipher } });
-				noteForm.querySelector('[name=note]').value = '';
-				root.querySelector('[data-wc-notes]').appendChild(renderMsg('note', text, new Date().toISOString(), boot().dataset.wcUid));
-				toast('success', t('note_added', 'Note saved.'));
+				btn.disabled = true;
+				try {
+					const cipher = await window.WcCrypto.seal(text, caseKey);
+					await api('/api/cases/' + data.id + '/notes', { method: 'POST', body: { cipher } });
+					noteForm.querySelector('[name=note]').value = '';
+					root.querySelector('[data-wc-notes]').appendChild(renderMsg('note', text, new Date().toISOString(), me));
+					toast('success', t('note_added', 'Note saved.'));
+				} catch (e) {
+					toast('error', e.message);
+				} finally {
+					btn.disabled = false;
+				}
 			});
-		}
-
-		function renderClosePending(by, to, me) {
-			const el = root.querySelector('[data-wc-close-pending]');
-			if (!el) return;
-			if (!by) { el.hidden = true; return; }
-			el.hidden = false;
-			const label = t('status_' + to, to);
-			const raw = by === me
-				? t('close_pending_self', '"{t}" requested — a second officer must confirm.')
-				: t('close_pending_other', '"{t}" requested by {by} — click the same button to confirm.');
-			el.querySelector('[data-wc-close-pending-text]').textContent =
-				raw.replace('{t}', label).replace('{by}', by);
 		}
 
 		root.querySelectorAll('[data-wc-status]').forEach((btn) => {
 			btn.addEventListener('click', async () => {
+				if (btn.disabled) return;
+				btn.disabled = true;
 				try {
 					const res = await api('/api/cases/' + data.id + '/status', { method: 'PUT', body: { status: btn.dataset.wcStatus, revision } });
 					refreshRev(res);
 					const badge = root.querySelector('[data-wc-status-badge]');
 					if (badge) { badge.textContent = t('status_' + res.status, res.status); badge.className = 'wc-status wc-status-' + res.status; }
-					renderClosePending(res.close_requested_by, res.close_requested_to, me);
+					renderClosePending(root, res.close_requested_by, res.close_requested_to, me);
 					toast('success', res.close_requested_by ? t('close_pending_toast', 'Request recorded — a second officer must confirm.') : t('status_saved', 'Status updated.'));
 				} catch (e) {
 					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
 					else toast('error', e.message);
+				} finally {
+					btn.disabled = false;
 				}
 			});
 		});
@@ -318,20 +542,40 @@
 		if (holdForm) {
 			holdForm.addEventListener('submit', async (ev) => {
 				ev.preventDefault();
-				const hold = holdForm.querySelector('[name=hold]').checked;
-				const reason = holdForm.querySelector('[name=reason]').value;
-				const res = await api('/api/cases/' + data.id + '/hold', { method: 'PUT', body: { hold, reason, revision } });
-				refreshRev(res);
-				toast('success', t('hold_saved', 'Saved.'));
+				const btn = holdForm.querySelector('[type=submit]');
+				if (btn) btn.disabled = true;
+				try {
+					const hold = holdForm.querySelector('[name=hold]').checked;
+					const reason = holdForm.querySelector('[name=reason]').value;
+					const res = await api('/api/cases/' + data.id + '/hold', { method: 'PUT', body: { hold, reason, revision } });
+					refreshRev(res);
+					toast('success', t('hold_saved', 'Saved.'));
+				} catch (e) {
+					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
+					else toast('error', e.message);
+				} finally {
+					if (btn) btn.disabled = false;
+				}
 			});
 		}
 
 		const assignSel = root.querySelector('[data-wc-assign]');
 		if (assignSel) {
+			let lastAssigned = data.assigned_to || '';
 			assignSel.addEventListener('change', async () => {
-				const res = await api('/api/cases/' + data.id + '/assign', { method: 'PUT', body: { uid: assignSel.value || null, revision } });
-				refreshRev(res);
-				toast('success', t('assigned', 'Assignment saved.'));
+				assignSel.disabled = true;
+				try {
+					const res = await api('/api/cases/' + data.id + '/assign', { method: 'PUT', body: { uid: assignSel.value || null, revision } });
+					refreshRev(res);
+					lastAssigned = assignSel.value;
+					toast('success', t('assigned', 'Assignment saved.'));
+				} catch (e) {
+					assignSel.value = lastAssigned;
+					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
+					else toast('error', e.message);
+				} finally {
+					assignSel.disabled = false;
+				}
 			});
 		}
 	}
@@ -339,51 +583,89 @@
 	// ── officers page ────────────────────────────────────────────────────
 
 	async function initOfficers(root) {
-		const me = boot().dataset.wcUid;
-		const myBlob = storedKeyBlob(me);
-		const regPanel = root.querySelector('[data-wc-keyreg]');
-		if (!myBlob && regPanel) regPanel.hidden = false;
-
+		const me = boot().wcUid;
+		const panel = root.querySelector('[data-wc-keyreg]');
 		const genBtn = root.querySelector('[data-wc-genkey]');
-		if (genBtn) {
-			genBtn.addEventListener('click', async () => {
-				const officers = JSON.parse(boot().dataset.wcOfficers || '[]');
-				const meRec = officers.find((o) => o.uid === me && o.status === 'active');
-				const rotating = !!(meRec && meRec.pubkey);
+		let officers = [];
+		try { officers = JSON.parse(boot().wcOfficers || '[]'); } catch (e) { officers = []; }
+		const meRec = officers.find((o) => o.uid === me && o.status === 'active');
+		const rotating = !!(meRec && meRec.pubkey);
+		const hasBlob = !!storedKeyBlob(me);
 
-				const pass = window.prompt(t('prompt_newpass', 'Choose a passphrase for your case key (store it safely — it cannot be recovered)'));
-				if (!pass || pass.length < 10) { toast('error', t('err_passweak', 'Passphrase needs at least 10 characters.')); return; }
+		// Retry via showLoadError re-runs this init — the keygen listener must
+		// never bind twice or one click would race two registrations and could
+		// store a wrapped private key that matches the losing POST's pubkey.
+		if (!panel || !genBtn || genBtn.dataset.wcBound) {
+			return loadOfficerList(root);
+		}
+		genBtn.dataset.wcBound = '1';
+		const err = panel.querySelector('[data-wc-keyreg-err]');
+
+		// Panel is always visible — setup wording for new keys, rotation
+		// wording + current-pass field for existing ones. Orphaning is an
+		// explicit, informed click, never a surprise.
+		if (rotating) {
+			panel.querySelector('[data-wc-keyreg-title]').textContent = t('keyreg_rotate_title', 'Rotate your key');
+			panel.querySelector('[data-wc-keyreg-copy]').textContent = t('keyreg_rotate_copy',
+				'Rotating creates a fresh keypair and re-encrypts every case you can read. Other officers are unaffected.');
+			genBtn.textContent = t('keyreg_rotate_btn', 'Rotate my key');
+			const warn = panel.querySelector('[data-wc-rotate-warn]');
+			if (!hasBlob) {
+				warn.textContent = t('keyreg_orphan_warn',
+					'Your current key is not on this device — rotating now locks you out of your cases until another officer re-grants access.');
+				warn.hidden = false;
+			} else {
+				panel.querySelector('[data-wc-oldpass-wrap]').hidden = false;
+			}
+		}
+
+		function keyError(msg, input) {
+			err.textContent = msg;
+			err.hidden = false;
+			if (input) { input.setAttribute('aria-invalid', 'true'); input.focus(); }
+		}
+
+		let allowPartial = false;
+		genBtn.addEventListener('click', async () => {
+			err.hidden = true;
+			const p1 = panel.querySelector('[data-wc-newpass]');
+			const p2 = panel.querySelector('[data-wc-newpass2]');
+			const pass = p1.value;
+			if (pass.length < 10) { keyError(t('err_passweak', 'Passphrase needs at least 10 characters.'), p1); return; }
+			if (pass !== p2.value) { keyError(t('err_passmismatch', 'Passphrases do not match.'), p2); return; }
+
+			genBtn.disabled = true;
+			try {
 				const kp = await window.WcCrypto.officerKeypair();
-
-				// ROTATION SAFETY: bumping key_version wipes every wrap sealed
-				// to the old key. Without an atomic re-wrap in the SAME request
-				// every case the officer holds becomes undecryptable —
-				// permanently when they are the only wrap-holder.
 				const body = { pubkey: kp.pubkey };
 				if (rotating) {
 					const held = (await api('/api/my-wraps')).wraps || [];
 					const blob = storedKeyBlob(me);
 					const oldPass = sessionStorage.getItem('wc_pass')
-						|| window.prompt(t('prompt_oldpass', 'Enter your CURRENT passphrase to keep access to your cases'));
+						|| panel.querySelector('[data-wc-oldpass]').value;
 					const oldPub = await pubKey(me);
 					let rewraps = null;
 					if (blob && oldPass && oldPub) {
 						const oldPriv = await window.WcCrypto.unwrapPrivateKey(blob, oldPass);
-						if (oldPriv) {
-							rewraps = {};
-							let failed = 0;
-							for (const w of held) {
-								const ck = await window.WcCrypto.openSealed(w.wrapped_key, oldPub, oldPriv);
-								if (ck === null) { failed++; continue; }
-								rewraps[w.case_id] = await window.WcCrypto.sealToPubkey(ck, kp.pubkey);
-							}
-							if (failed > 0) {
-								if (!window.confirm(t('confirm_rotate_partial', '{n} case(s) could not be re-wrapped and will need a re-grant from another officer. Rotate anyway?').replace('{n}', String(failed)))) return;
-							}
+						if (!oldPriv) { keyError(t('err_pass', 'Wrong passphrase — try again.'), panel.querySelector('[data-wc-oldpass]')); return; }
+						rewraps = {};
+						let failed = 0;
+						for (const w of held) {
+							const ck = await window.WcCrypto.openSealed(w.wrapped_key, oldPub, oldPriv);
+							if (ck === null) { failed++; continue; }
+							rewraps[w.case_id] = await window.WcCrypto.sealToPubkey(ck, kp.pubkey);
+						}
+						if (failed > 0 && !allowPartial) {
+							keyError(t('rotate_partial', '{n} case(s) could not be re-wrapped — click "Rotate my key" again to rotate anyway.').replace('{n}', String(failed)));
+							allowPartial = true;
+							return;
 						}
 					}
-					if (rewraps === null && held.length > 0) {
-						if (!window.confirm(t('confirm_rotate_orphan', 'Your current key is not available on this device — rotating now locks you out of {n} case(s) until another officer re-wraps them. Continue?').replace('{n}', String(held.length)))) return;
+					if (rewraps === null && held.length > 0 && !allowPartial) {
+						keyError(t('rotate_orphan_confirm',
+							'Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.').replace('{n}', String(held.length)));
+						allowPartial = true;
+						return;
 					}
 					if (rewraps !== null) body.wraps = rewraps;
 				}
@@ -391,36 +673,46 @@
 				const wrapped = await window.WcCrypto.wrapPrivateKey(kp.privkey, pass);
 				await api('/api/officers/key', { method: 'POST', body });
 				localStorage.setItem(LS_PRIV + '_' + me, wrapped);
+				sessionStorage.setItem('wc_pass', pass);
 				toast('success', t('key_saved', 'Key registered. Keep your passphrase safe.'));
 				location.reload();
-			});
-		}
+			} catch (e) {
+				toast('error', e.message || t('err_generic', 'Something went wrong.'));
+			} finally {
+				genBtn.disabled = false;
+			}
+		});
 
 		const list = root.querySelector('[data-wc-officers]');
-		const data = await api('/api/officers');
-		list.innerHTML = '';
-		for (const o of data.officers) {
-			const tr = document.createElement('tr');
-			['uid', 'fingerprint', 'status', 'key_version'].forEach((k) => {
-				const td = document.createElement('td');
-				td.textContent = k === 'fingerprint' ? String(o[k]).slice(0, 16) + '…' : String(o[k] ?? '');
-				tr.appendChild(td);
-			});
-			const td = document.createElement('td');
-			if (o.status === 'active' && o.uid !== me) {
-				const btn = document.createElement('button');
-				btn.type = 'button';
-				btn.className = 'wc-btn-danger';
-				btn.textContent = t('revoke', 'Revoke');
-				btn.addEventListener('click', async () => {
-					if (!window.confirm(t('confirm_revoke', 'Revoke this officer? You will re-wrap all cases afterwards.'))) return;
-					await api('/api/officers/' + encodeURIComponent(o.uid), { method: 'DELETE' });
-					location.reload();
+		try {
+			const data = await api('/api/officers');
+			list.innerHTML = '';
+			list.removeAttribute('aria-busy');
+			for (const o of data.officers) {
+				const tr = document.createElement('tr');
+				['uid', 'fingerprint', 'status', 'key_version'].forEach((k) => {
+					const td = document.createElement('td');
+					td.textContent = k === 'fingerprint' ? String(o[k]).slice(0, 16) + '…' : String(o[k] ?? '');
+					tr.appendChild(td);
 				});
-				td.appendChild(btn);
+				const td = document.createElement('td');
+				if (o.status === 'active' && o.uid !== me) {
+					const btn = document.createElement('button');
+					btn.type = 'button';
+					btn.className = 'wc-btn-danger';
+					btn.textContent = t('revoke', 'Revoke');
+					btn.addEventListener('click', async () => {
+						if (!window.confirm(t('confirm_revoke', 'Revoke this officer? You will re-wrap all cases afterwards.'))) return;
+						await api('/api/officers/' + encodeURIComponent(o.uid), { method: 'DELETE' });
+						location.reload();
+					});
+					td.appendChild(btn);
+				}
+				tr.appendChild(td);
+				list.appendChild(tr);
 			}
-			tr.appendChild(td);
-			list.appendChild(tr);
+		} catch (e) {
+			showLoadError(list, 5, () => initOfficers(root));
 		}
 	}
 
@@ -431,6 +723,8 @@
 		if (!form) return;
 		form.addEventListener('submit', async (ev) => {
 			ev.preventDefault();
+			const btn = form.querySelector('[type=submit]');
+			btn.disabled = true;
 			const values = {};
 			const revisions = {};
 			form.querySelectorAll('[data-wc-config]').forEach((el) => {
@@ -449,6 +743,8 @@
 			} catch (e) {
 				if (e.status === 409) { toast('error', t('err_conflict', 'Settings changed elsewhere — reloading.')); location.reload(); }
 				else toast('error', e.message);
+			} finally {
+				btn.disabled = false;
 			}
 		});
 	}
@@ -459,23 +755,29 @@
 		const form = root.querySelector('[data-wc-cat-form]');
 		const list = root.querySelector('[data-wc-cats]');
 		const reload = async () => {
-			const data = await api('/api/categories');
-			list.innerHTML = '';
-			for (const c of data.categories) {
-				const tr = document.createElement('tr');
-				const lde = document.createElement('td'); lde.textContent = c.label.de || '';
-				const len = document.createElement('td'); len.textContent = c.label.en || '';
-				const st = document.createElement('td'); st.textContent = c.archived ? t('archived', 'archived') : t('active', 'active');
-				const act = document.createElement('td');
-				if (!c.archived) {
-					const b = document.createElement('button');
-					b.type = 'button';
-					b.textContent = t('archive', 'Archive');
-					b.addEventListener('click', async () => { await api('/api/categories/' + c.id, { method: 'DELETE' }); reload(); });
-					act.appendChild(b);
+			try {
+				const data = await api('/api/categories');
+				list.innerHTML = '';
+				list.removeAttribute('aria-busy');
+				for (const c of data.categories) {
+					const tr = document.createElement('tr');
+					const lde = document.createElement('td'); lde.textContent = c.label.de || '';
+					const len = document.createElement('td'); len.textContent = c.label.en || '';
+					const st = document.createElement('td'); st.textContent = c.archived ? t('archived', 'archived') : t('active', 'active');
+					const act = document.createElement('td');
+					if (!c.archived) {
+						const b = document.createElement('button');
+						b.type = 'button';
+						b.className = 'wc-btn-secondary wc-btn-inline';
+						b.textContent = t('archive', 'Archive');
+						b.addEventListener('click', async () => { await api('/api/categories/' + c.id, { method: 'DELETE' }); reload(); });
+						act.appendChild(b);
+					}
+					tr.append(lde, len, st, act);
+					list.appendChild(tr);
 				}
-				tr.append(lde, len, st, act);
-				list.appendChild(tr);
+			} catch (e) {
+				showLoadError(list, 4, reload);
 			}
 		};
 		if (form) {
@@ -495,44 +797,67 @@
 	// ── audit ────────────────────────────────────────────────────────────
 
 	async function initAudit(root) {
-		const data = await api('/api/audit');
-		const badge = root.querySelector('[data-wc-chain]');
-		if (badge) {
-			badge.textContent = data.chain_ok ? t('chain_ok', 'Chain intact') : t('chain_broken', 'CHAIN BROKEN');
-			badge.classList.add(data.chain_ok ? 'wc-ok' : 'wc-bad');
-		}
 		const tbody = root.querySelector('[data-wc-audit]');
-		for (const e of data.events) {
-			const tr = document.createElement('tr');
-			[e.seq, e.event, e.actor || '—', e.case_id ?? '—', e.at].forEach((v) => {
-				const td = document.createElement('td');
-				td.textContent = String(v);
-				tr.appendChild(td);
-			});
-			tbody.appendChild(tr);
+		try {
+			const data = await api('/api/audit');
+			const badge = root.querySelector('[data-wc-chain]');
+			if (badge) {
+				badge.textContent = data.chain_ok ? t('chain_ok', 'Chain intact') : t('chain_broken', 'CHAIN BROKEN');
+				badge.classList.add(data.chain_ok ? 'wc-ok' : 'wc-bad');
+			}
+			tbody.innerHTML = '';
+			tbody.removeAttribute('aria-busy');
+			for (const e of data.events) {
+				const tr = document.createElement('tr');
+				[e.seq, e.event, e.actor || '—', e.case_id ?? '—', e.at].forEach((v) => {
+					const td = document.createElement('td');
+					td.textContent = String(v);
+					tr.appendChild(td);
+				});
+				tbody.appendChild(tr);
+			}
+		} catch (e) {
+			showLoadError(tbody, 5, () => initAudit(root));
 		}
 	}
 
 	// ── stats ────────────────────────────────────────────────────────────
 
 	async function initStats(root) {
-		const data = await api('/api/stats');
-		root.querySelector('[data-wc-total]').textContent = data.total;
-		root.querySelector('[data-wc-overdue]').textContent = data.overdue;
-		const tbody = root.querySelector('[data-wc-statstatus]');
-		Object.keys(data.by_status).forEach((s) => {
-			const tr = document.createElement('tr');
-			const a = document.createElement('td'); a.textContent = t('status_' + s, s);
-			const b = document.createElement('td'); b.textContent = data.by_status[s];
-			tr.append(a, b); tbody.appendChild(tr);
-		});
-		const cat = root.querySelector('[data-wc-statcat]');
-		for (const c of data.by_category) {
-			const tr = document.createElement('tr');
-			const a = document.createElement('td'); a.textContent = c.label.en || c.label.de || ('#' + c.id);
-			const b = document.createElement('td');
-			b.textContent = c.count === null ? '< ' + data.small_cell_floor : c.count; // small-cell suppression
-			tr.append(a, b); cat.appendChild(tr);
+		const body = root.querySelector('[data-wc-stats-body]');
+		const loading = root.querySelector('[data-wc-loading]');
+		try {
+			const data = await api('/api/stats');
+			if (loading) loading.hidden = true;
+			body.removeAttribute('aria-busy');
+			root.querySelector('[data-wc-total]').textContent = data.total;
+			root.querySelector('[data-wc-overdue]').textContent = data.overdue;
+			const tbody = root.querySelector('[data-wc-statstatus]');
+			Object.keys(data.by_status).forEach((s) => {
+				const tr = document.createElement('tr');
+				const a = document.createElement('td'); a.textContent = t('status_' + s, s);
+				const b = document.createElement('td'); b.textContent = data.by_status[s];
+				tr.append(a, b); tbody.appendChild(tr);
+			});
+			const cat = root.querySelector('[data-wc-statcat]');
+			for (const c of data.by_category) {
+				const tr = document.createElement('tr');
+				const a = document.createElement('td'); a.textContent = c.label.en || c.label.de || ('#' + c.id);
+				const b = document.createElement('td');
+				b.textContent = c.count === null ? '< ' + data.small_cell_floor : c.count; // small-cell suppression
+				tr.append(a, b); cat.appendChild(tr);
+			}
+		} catch (e) {
+			if (loading) {
+				loading.className = 'wc-load-error';
+				loading.textContent = t('err_load', 'Could not load.') + ' ';
+				const btn = document.createElement('button');
+				btn.type = 'button';
+				btn.className = 'wc-btn-secondary wc-btn-inline';
+				btn.textContent = t('retry', 'Try again');
+				btn.addEventListener('click', () => initStats(root));
+				loading.appendChild(btn);
+			}
 		}
 	}
 
@@ -541,26 +866,50 @@
 	function initCompanion(root) {
 		const form = root.querySelector('[data-wc-pair-form]');
 		if (!form) return;
+		const tokenPanel = root.querySelector('[data-wc-token-panel]');
 		form.addEventListener('submit', async (ev) => {
 			ev.preventDefault();
 			const name = form.querySelector('[name=name]').value.trim();
-			const res = await api('/api/devices', { method: 'POST', body: { name } });
-			const out = root.querySelector('[data-wc-token]');
-			out.textContent = res.token; // shown once, never stored server-side
-			out.closest('[data-wc-token-panel]').hidden = false;
+			if (!name) return;
+			try {
+				const res = await api('/api/devices', { method: 'POST', body: { name } });
+				const out = root.querySelector('[data-wc-token]');
+				out.textContent = res.token; // shown once, never stored server-side
+				tokenPanel.hidden = false;
+				const copyBtn = tokenPanel.querySelector('[data-wc-copy-token]');
+				if (copyBtn) copyBtn.onclick = () => copyText(res.token).then(() => toast('success', t('copied', 'Copied.')));
+				form.reset();
+			} catch (e) {
+				toast('error', e.message);
+			}
 		});
 		const list = root.querySelector('[data-wc-devices]');
 		api('/api/devices').then((d) => {
 			list.innerHTML = '';
+			list.removeAttribute('aria-busy');
+			if (d.devices.length === 0) {
+				const li = document.createElement('li');
+				li.className = 'wc-hint';
+				li.textContent = t('no_devices', 'No paired devices.');
+				list.appendChild(li);
+			}
 			d.devices.forEach((dev) => {
 				const li = document.createElement('li');
 				li.textContent = dev.name + ' — ' + (dev.last_seen || dev.created) + ' ';
 				const b = document.createElement('button');
-				b.type = 'button'; b.textContent = t('revoke', 'Revoke');
+				b.type = 'button';
+				b.className = 'wc-btn-secondary wc-btn-inline';
+				b.textContent = t('revoke', 'Revoke');
 				b.addEventListener('click', async () => { await api('/api/devices/' + dev.id, { method: 'DELETE' }); li.remove(); });
 				li.appendChild(b);
 				list.appendChild(li);
 			});
+		}).catch(() => {
+			list.innerHTML = '';
+			const li = document.createElement('li');
+			li.className = 'wc-load-error';
+			li.textContent = t('err_load', 'Could not load.');
+			list.appendChild(li);
 		});
 	}
 
@@ -568,13 +917,19 @@
 		const data = await api('/api/verbal-text');
 		root.querySelector('[data-wc-verbal-de]').textContent = data.de;
 		root.querySelector('[data-wc-verbal-en]').textContent = data.en;
+		root.querySelectorAll('[data-wc-copy]').forEach((btn) => {
+			btn.addEventListener('click', () => {
+				const src = root.querySelector('[data-wc-verbal-' + btn.dataset.wcCopy + ']');
+				copyText(src.textContent).then(() => toast('success', t('copied', 'Copied.')));
+			});
+		});
 	}
 
 	// ── boot ─────────────────────────────────────────────────────────────
 
 	document.addEventListener('DOMContentLoaded', () => {
 		if (window.CheckFieldErrors) window.CheckFieldErrors.install({ prefix: 'wc' });
-		const page = boot().dataset.wcPage;
+		const page = boot().wcPage;
 		const root = document.getElementById('app-content') || document.body;
 		const init = {
 			inbox: initInbox, case: initCase, officers: initOfficers,

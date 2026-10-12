@@ -7,13 +7,18 @@ $rev = $_['revisions'] ?? [];
 $section = $_['section'] ?? 'channel';
 $val = static fn (string $k) => $cfg[$k] ?? '';
 $rv = static fn (string $k) => (string)($rev[$k] ?? 0);
+$_['wc_nav_current'] = 'settings';
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>
-	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>" data-wc-page="<?php p($section === 'categories' ? 'categories' : ($section === 'companion' ? 'companion' : 'settings')); ?>"
+<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>"
+	data-wc-page="<?php p($section === 'categories' ? 'categories' : ($section === 'companion' ? 'companion' : 'settings')); ?>"
 	data-wc-uid="<?php p($_['wc_uid'] ?? ''); ?>">
+	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>
 	<div class="wc-app-wrap" id="wc-main">
-		<h1><?php p($l->t('WhistleCheck settings')); ?></h1>
-		<nav class="wc-nav" aria-label="<?php p($l->t('Settings sections')); ?>">
+		<header class="wc-app-header">
+			<h1><?php p($l->t('WhistleCheck settings')); ?></h1>
+			<?php include __DIR__ . '/parts/nav.php'; ?>
+		</header>
+		<nav class="wc-nav wc-nav-sub" aria-label="<?php p($l->t('Settings sections')); ?>">
 			<?php foreach (['channel', 'categories', 'attachments', 'retention', 'access', 'companion', 'support'] as $s): ?>
 				<a href="<?php p($_['urlGenerator']->linkToRoute('whistlecheck.page.settings', ['section' => $s])); ?>"
 					<?php if ($s === $section): ?>aria-current="page"<?php endif; ?>><?php p($l->t(ucfirst($s))); ?></a>
@@ -22,7 +27,9 @@ $rv = static fn (string $k) => (string)($rev[$k] ?? 0);
 
 		<?php if ($section === 'categories'): ?>
 			<h2><?php p($l->t('Categories')); ?></h2>
-			<table class="wc-table"><tbody data-wc-cats></tbody></table>
+			<table class="wc-table"><tbody data-wc-cats aria-busy="true">
+				<tr><td colspan="4" class="wc-loading"><?php p($l->t('Loading…')); ?></td></tr>
+			</tbody></table>
 			<form data-wc-cat-form>
 				<div class="wc-field"><label for="wc-cat-de"><?php p($l->t('Label (German)')); ?></label>
 					<input id="wc-cat-de" name="label_de" maxlength="200" required></div>
@@ -33,15 +40,18 @@ $rv = static fn (string $k) => (string)($rev[$k] ?? 0);
 
 		<?php elseif ($section === 'companion'): ?>
 			<h2><?php p($l->t('Companion app devices')); ?></h2>
-			<ul data-wc-devices></ul>
+			<ul data-wc-devices class="wc-devices" aria-busy="true">
+				<li class="wc-loading"><?php p($l->t('Loading…')); ?></li>
+			</ul>
 			<form data-wc-pair-form>
 				<div class="wc-field"><label for="wc-dev-name"><?php p($l->t('Device name')); ?></label>
 					<input id="wc-dev-name" name="name" maxlength="64" required></div>
 				<button type="submit" class="wc-btn-primary"><?php p($l->t('Pair device')); ?></button>
 			</form>
-			<div data-wc-token-panel hidden>
+			<div data-wc-token-panel class="wc-panel" hidden>
 				<h3><?php p($l->t('Device token (shown once)')); ?></h3>
-				<code data-wc-token></code>
+				<code data-wc-token class="wc-code-value"></code>
+				<p><button type="button" class="wc-btn-secondary" data-wc-copy-token><?php p($l->t('Copy token')); ?></button></p>
 				<p class="wc-hint"><?php p($l->t('Copy this into the companion app now. It will not be shown again.')); ?></p>
 			</div>
 
