@@ -27,7 +27,7 @@ $_['wc_nav_current'] = 'cases';
 				<label for="wc-unlock-pass"><?php p($l->t('Passphrase')); ?></label>
 				<input id="wc-unlock-pass" type="password" autocomplete="current-password" data-wc-unlock-pass>
 			</div>
-			<p class="wc-field-error" data-wc-unlock-err hidden></p>
+			<p class="wc-field-error" data-wc-unlock-err role="alert" hidden></p>
 			<button type="button" class="wc-btn-primary" data-wc-unlock-go><?php p($l->t('Unlock')); ?></button>
 		</section>
 

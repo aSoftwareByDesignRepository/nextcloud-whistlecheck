@@ -362,9 +362,18 @@
 		// Fetch is done — the visible blocker is now the unlock panel
 		// (user action), not the spinner. aria-busy must reflect that.
 		done();
+		// Action buttons stay inert until decryption succeeds and
+		// bindCaseActions wires their handlers — otherwise a click before
+		// unlock would fire an unbound native form submit and lose the text.
+		body.querySelectorAll('form [type=submit], [data-wc-status], [data-wc-assign]').forEach((el) => { el.disabled = true; });
 		const me = boot().wcUid;
 		root.dataset.revision = data.revision;
 		renderClosePending(root, data.close_requested_by, data.close_requested_to, me);
+		// Plaintext chrome renders immediately — it doesn't need the key.
+		const badge = root.querySelector('[data-wc-status-badge]');
+		if (badge) { badge.textContent = t('status_' + data.status, data.status); badge.className = 'wc-status wc-status-' + data.status; }
+		const assignSel = root.querySelector('[data-wc-assign]');
+		if (assignSel) assignSel.value = data.assigned_to || '';
 
 		const priv = await unlockPrivateKey();
 		if (!priv) {
@@ -395,11 +404,6 @@
 			const el = root.querySelector('[data-wc-contact]');
 			if (el && c) { el.textContent = c; el.closest('[data-wc-contact-block]').hidden = false; }
 		}
-
-		const badge = root.querySelector('[data-wc-status-badge]');
-		if (badge) { badge.textContent = t('status_' + data.status, data.status); badge.className = 'wc-status wc-status-' + data.status; }
-		const assignSel = root.querySelector('[data-wc-assign]');
-		if (assignSel) assignSel.value = data.assigned_to || '';
 
 		const list = root.querySelector('[data-wc-messages]');
 		for (const m of (data.messages || [])) {
@@ -472,6 +476,9 @@
 		const me = boot().wcUid;
 		let revision = data.revision;
 		const refreshRev = (d) => { revision = d.revision; root.dataset.revision = revision; };
+		// initCase disabled all action controls until this point — handlers
+		// are being wired now, so everything can go live.
+		root.querySelectorAll('form [type=submit], [data-wc-status], [data-wc-assign]').forEach((el) => { el.disabled = false; });
 
 		const replyForm = root.querySelector('[data-wc-reply-form]');
 		if (replyForm) {
@@ -620,14 +627,14 @@
 		}
 
 		function keyError(msg, input) {
-			err.textContent = msg;
-			err.hidden = false;
+			if (err) { err.textContent = msg; err.hidden = false; }
 			if (input) { input.setAttribute('aria-invalid', 'true'); input.focus(); }
 		}
 
 		let allowPartial = false;
 		genBtn.addEventListener('click', async () => {
-			err.hidden = true;
+			if (err) err.hidden = true;
+			panel.querySelectorAll('[aria-invalid]').forEach((el) => el.removeAttribute('aria-invalid'));
 			const p1 = panel.querySelector('[data-wc-newpass]');
 			const p2 = panel.querySelector('[data-wc-newpass2]');
 			const pass = p1.value;
@@ -641,13 +648,13 @@
 				if (rotating) {
 					const held = (await api('/api/my-wraps')).wraps || [];
 					const blob = storedKeyBlob(me);
-					const oldPass = sessionStorage.getItem('wc_pass')
-						|| panel.querySelector('[data-wc-oldpass]').value;
+					const oldPassField = panel.querySelector('[data-wc-oldpass]');
+					const oldPass = sessGet('wc_pass') || (oldPassField ? oldPassField.value : '');
 					const oldPub = await pubKey(me);
 					let rewraps = null;
 					if (blob && oldPass && oldPub) {
 						const oldPriv = await window.WcCrypto.unwrapPrivateKey(blob, oldPass);
-						if (!oldPriv) { keyError(t('err_pass', 'Wrong passphrase — try again.'), panel.querySelector('[data-wc-oldpass]')); return; }
+						if (!oldPriv) { keyError(t('err_pass', 'Wrong passphrase — try again.'), oldPassField); return; }
 						rewraps = {};
 						let failed = 0;
 						for (const w of held) {
@@ -662,8 +669,17 @@
 						}
 					}
 					if (rewraps === null && held.length > 0 && !allowPartial) {
-						keyError(t('rotate_orphan_confirm',
-							'Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.').replace('{n}', String(held.length)));
+						if (blob && !oldPass) {
+							// Key IS on this device — the officer just left the
+							// passphrase empty. Demand it explicitly instead of
+							// the misleading "not on this device" orphan path.
+							keyError(t('rotate_need_oldpass',
+								'Enter your current passphrase to keep access to your cases. If you have forgotten it, click "Rotate my key" again — you will lose access to {n} case(s) until another officer re-grants them.').replace('{n}', String(held.length)),
+								oldPassField);
+						} else {
+							keyError(t('rotate_orphan_confirm',
+								'Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.').replace('{n}', String(held.length)));
+						}
 						allowPartial = true;
 						return;
 					}
@@ -671,9 +687,23 @@
 				}
 
 				const wrapped = await window.WcCrypto.wrapPrivateKey(kp.privkey, pass);
-				await api('/api/officers/key', { method: 'POST', body });
-				localStorage.setItem(LS_PRIV + '_' + me, wrapped);
-				sessionStorage.setItem('wc_pass', pass);
+				const blobKey = LS_PRIV + '_' + me;
+				const oldBlob = storedKeyBlob(me);
+				// Write the new wrapped key BEFORE committing the pubkey — if
+				// localStorage is blocked we keep the old server+client pair
+				// intact instead of bricking the officer with a server-side
+				// pubkey nobody holds the private key for.
+				if (!localSet(blobKey, wrapped)) {
+					keyError(t('err_storage', 'Could not store the key in this browser — enable site storage and try again.'), p1);
+					return;
+				}
+				try {
+					await api('/api/officers/key', { method: 'POST', body });
+				} catch (e) {
+					if (oldBlob !== null) localSet(blobKey, oldBlob);
+					throw e;
+				}
+				sessSet('wc_pass', pass);
 				toast('success', t('key_saved', 'Key registered. Keep your passphrase safe.'));
 				location.reload();
 			} catch (e) {
@@ -683,12 +713,18 @@
 			}
 		});
 
+		await loadOfficerList(root);
+	}
+
+	async function loadOfficerList(root) {
+		const me = boot().wcUid;
 		const list = root.querySelector('[data-wc-officers]');
+		if (!list) return;
 		try {
 			const data = await api('/api/officers');
 			list.innerHTML = '';
 			list.removeAttribute('aria-busy');
-			for (const o of data.officers) {
+			for (const o of (data.officers || [])) {
 				const tr = document.createElement('tr');
 				['uid', 'fingerprint', 'status', 'key_version'].forEach((k) => {
 					const td = document.createElement('td');
@@ -702,9 +738,16 @@
 					btn.className = 'wc-btn-danger';
 					btn.textContent = t('revoke', 'Revoke');
 					btn.addEventListener('click', async () => {
+						if (btn.disabled) return;
 						if (!window.confirm(t('confirm_revoke', 'Revoke this officer? You will re-wrap all cases afterwards.'))) return;
-						await api('/api/officers/' + encodeURIComponent(o.uid), { method: 'DELETE' });
-						location.reload();
+						btn.disabled = true;
+						try {
+							await api('/api/officers/' + encodeURIComponent(o.uid), { method: 'DELETE' });
+							location.reload();
+						} catch (e) {
+							btn.disabled = false;
+							toast('error', e.message || t('err_generic', 'Something went wrong. Please try again.'));
+						}
 					});
 					td.appendChild(btn);
 				}
@@ -712,7 +755,7 @@
 				list.appendChild(tr);
 			}
 		} catch (e) {
-			showLoadError(list, 5, () => initOfficers(root));
+			showLoadError(list, 5, () => loadOfficerList(root));
 		}
 	}
 
@@ -724,7 +767,7 @@
 		form.addEventListener('submit', async (ev) => {
 			ev.preventDefault();
 			const btn = form.querySelector('[type=submit]');
-			btn.disabled = true;
+			if (btn) btn.disabled = true;
 			const values = {};
 			const revisions = {};
 			form.querySelectorAll('[data-wc-config]').forEach((el) => {
@@ -744,7 +787,7 @@
 				if (e.status === 409) { toast('error', t('err_conflict', 'Settings changed elsewhere — reloading.')); location.reload(); }
 				else toast('error', e.message);
 			} finally {
-				btn.disabled = false;
+				if (btn) btn.disabled = false;
 			}
 		});
 	}
@@ -755,11 +798,12 @@
 		const form = root.querySelector('[data-wc-cat-form]');
 		const list = root.querySelector('[data-wc-cats]');
 		const reload = async () => {
+			if (!list) return;
 			try {
 				const data = await api('/api/categories');
 				list.innerHTML = '';
 				list.removeAttribute('aria-busy');
-				for (const c of data.categories) {
+				for (const c of (data.categories || [])) {
 					const tr = document.createElement('tr');
 					const lde = document.createElement('td'); lde.textContent = c.label.de || '';
 					const len = document.createElement('td'); len.textContent = c.label.en || '';
@@ -770,7 +814,17 @@
 						b.type = 'button';
 						b.className = 'wc-btn-secondary wc-btn-inline';
 						b.textContent = t('archive', 'Archive');
-						b.addEventListener('click', async () => { await api('/api/categories/' + c.id, { method: 'DELETE' }); reload(); });
+						b.addEventListener('click', async () => {
+							if (b.disabled) return;
+							b.disabled = true;
+							try {
+								await api('/api/categories/' + c.id, { method: 'DELETE' });
+								reload();
+							} catch (e) {
+								b.disabled = false;
+								toast('error', e.message || t('err_generic', 'Something went wrong. Please try again.'));
+							}
+						});
 						act.appendChild(b);
 					}
 					tr.append(lde, len, st, act);
@@ -780,15 +834,24 @@
 				showLoadError(list, 4, reload);
 			}
 		};
-		if (form) {
+		if (form && !form.dataset.wcBound) {
+			form.dataset.wcBound = '1';
 			form.addEventListener('submit', async (ev) => {
 				ev.preventDefault();
+				const btn = form.querySelector('[type=submit]');
 				const de = form.querySelector('[name=label_de]').value.trim();
 				const en = form.querySelector('[name=label_en]').value.trim();
 				if (!de || !en) return;
-				await api('/api/categories', { method: 'POST', body: { labels: { de, en } } });
-				form.reset();
-				reload();
+				if (btn) btn.disabled = true;
+				try {
+					await api('/api/categories', { method: 'POST', body: { labels: { de, en } } });
+					form.reset();
+					reload();
+				} catch (e) {
+					toast('error', e.message || t('err_generic', 'Something went wrong. Please try again.'));
+				} finally {
+					if (btn) btn.disabled = false;
+				}
 			});
 		}
 		await reload();
@@ -798,6 +861,7 @@
 
 	async function initAudit(root) {
 		const tbody = root.querySelector('[data-wc-audit]');
+		if (!tbody) return;
 		try {
 			const data = await api('/api/audit');
 			const badge = root.querySelector('[data-wc-chain]');
@@ -807,7 +871,7 @@
 			}
 			tbody.innerHTML = '';
 			tbody.removeAttribute('aria-busy');
-			for (const e of data.events) {
+			for (const e of (data.events || [])) {
 				const tr = document.createElement('tr');
 				[e.seq, e.event, e.actor || '—', e.case_id ?? '—', e.at].forEach((v) => {
 					const td = document.createElement('td');
@@ -829,18 +893,18 @@
 		try {
 			const data = await api('/api/stats');
 			if (loading) loading.hidden = true;
-			body.removeAttribute('aria-busy');
+			if (body) body.removeAttribute('aria-busy');
 			root.querySelector('[data-wc-total]').textContent = data.total;
 			root.querySelector('[data-wc-overdue]').textContent = data.overdue;
 			const tbody = root.querySelector('[data-wc-statstatus]');
-			Object.keys(data.by_status).forEach((s) => {
+			if (tbody) Object.keys(data.by_status || {}).forEach((s) => {
 				const tr = document.createElement('tr');
 				const a = document.createElement('td'); a.textContent = t('status_' + s, s);
 				const b = document.createElement('td'); b.textContent = data.by_status[s];
 				tr.append(a, b); tbody.appendChild(tr);
 			});
 			const cat = root.querySelector('[data-wc-statcat]');
-			for (const c of data.by_category) {
+			if (cat) for (const c of (data.by_category || [])) {
 				const tr = document.createElement('tr');
 				const a = document.createElement('td'); a.textContent = c.label.en || c.label.de || ('#' + c.id);
 				const b = document.createElement('td');
@@ -848,6 +912,7 @@
 				tr.append(a, b); cat.appendChild(tr);
 			}
 		} catch (e) {
+			if (body) body.removeAttribute('aria-busy');
 			if (loading) {
 				loading.className = 'wc-load-error';
 				loading.textContent = t('err_load', 'Could not load.') + ' ';
@@ -869,58 +934,94 @@
 		const tokenPanel = root.querySelector('[data-wc-token-panel]');
 		form.addEventListener('submit', async (ev) => {
 			ev.preventDefault();
+			const btn = form.querySelector('[type=submit]');
 			const name = form.querySelector('[name=name]').value.trim();
 			if (!name) return;
+			if (btn) btn.disabled = true;
 			try {
 				const res = await api('/api/devices', { method: 'POST', body: { name } });
 				const out = root.querySelector('[data-wc-token]');
 				out.textContent = res.token; // shown once, never stored server-side
-				tokenPanel.hidden = false;
-				const copyBtn = tokenPanel.querySelector('[data-wc-copy-token]');
-				if (copyBtn) copyBtn.onclick = () => copyText(res.token).then(() => toast('success', t('copied', 'Copied.')));
+				if (tokenPanel) {
+					tokenPanel.hidden = false;
+					const copyBtn = tokenPanel.querySelector('[data-wc-copy-token]');
+					if (copyBtn) copyBtn.onclick = () => copyText(res.token).then(
+						() => toast('success', t('copied', 'Copied.')),
+						() => toast('error', t('err_copy', 'Copy failed — select and copy the token manually.')));
+				}
 				form.reset();
 			} catch (e) {
 				toast('error', e.message);
+			} finally {
+				if (btn) btn.disabled = false;
 			}
 		});
 		const list = root.querySelector('[data-wc-devices]');
-		api('/api/devices').then((d) => {
+		if (!list) return;
+		const loadDevices = () => api('/api/devices').then((d) => {
 			list.innerHTML = '';
 			list.removeAttribute('aria-busy');
-			if (d.devices.length === 0) {
+			if (!d.devices || d.devices.length === 0) {
 				const li = document.createElement('li');
 				li.className = 'wc-hint';
 				li.textContent = t('no_devices', 'No paired devices.');
 				list.appendChild(li);
 			}
-			d.devices.forEach((dev) => {
+			(d.devices || []).forEach((dev) => {
 				const li = document.createElement('li');
 				li.textContent = dev.name + ' — ' + (dev.last_seen || dev.created) + ' ';
 				const b = document.createElement('button');
 				b.type = 'button';
 				b.className = 'wc-btn-secondary wc-btn-inline';
 				b.textContent = t('revoke', 'Revoke');
-				b.addEventListener('click', async () => { await api('/api/devices/' + dev.id, { method: 'DELETE' }); li.remove(); });
+				b.addEventListener('click', async () => {
+					if (b.disabled) return;
+					b.disabled = true;
+					try {
+						await api('/api/devices/' + dev.id, { method: 'DELETE' });
+						li.remove();
+						if (!list.children.length) loadDevices();
+					} catch (e) {
+						b.disabled = false;
+						toast('error', e.message || t('err_generic', 'Something went wrong. Please try again.'));
+					}
+				});
 				li.appendChild(b);
 				list.appendChild(li);
 			});
 		}).catch(() => {
 			list.innerHTML = '';
+			list.removeAttribute('aria-busy');
 			const li = document.createElement('li');
 			li.className = 'wc-load-error';
-			li.textContent = t('err_load', 'Could not load.');
+			li.textContent = t('err_load', 'Could not load.') + ' ';
+			const btn = document.createElement('button');
+			btn.type = 'button';
+			btn.className = 'wc-btn-secondary wc-btn-inline';
+			btn.textContent = t('retry', 'Try again');
+			btn.addEventListener('click', loadDevices);
+			li.appendChild(btn);
 			list.appendChild(li);
 		});
+		loadDevices();
 	}
 
 	async function initVerbal(root) {
-		const data = await api('/api/verbal-text');
-		root.querySelector('[data-wc-verbal-de]').textContent = data.de;
-		root.querySelector('[data-wc-verbal-en]').textContent = data.en;
+		try {
+			const data = await api('/api/verbal-text');
+			root.querySelector('[data-wc-verbal-de]').textContent = data.de;
+			root.querySelector('[data-wc-verbal-en]').textContent = data.en;
+		} catch (e) {
+			toast('error', e.message || t('err_generic', 'Something went wrong. Please try again.'));
+			return;
+		}
 		root.querySelectorAll('[data-wc-copy]').forEach((btn) => {
 			btn.addEventListener('click', () => {
 				const src = root.querySelector('[data-wc-verbal-' + btn.dataset.wcCopy + ']');
-				copyText(src.textContent).then(() => toast('success', t('copied', 'Copied.')));
+				if (!src || !src.textContent) return;
+				copyText(src.textContent).then(
+					() => toast('success', t('copied', 'Copied.')),
+					() => toast('error', t('err_copy', 'Copy failed — select and copy the text manually.')));
 			});
 		});
 	}

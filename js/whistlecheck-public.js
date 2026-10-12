@@ -291,6 +291,9 @@
 					} else {
 						showError((json && json.message) || t('err_generic', 'Something went wrong.'));
 					}
+				} catch (e) {
+					// Network/crypto failure — the user must see it, not a silent hang.
+					showError(t('err_generic', 'Something went wrong.'));
 				} finally {
 					btn.disabled = false;
 				}
@@ -314,17 +317,27 @@
 		const val = document.querySelector('#wc-code-panel .wc-code-value');
 		if (!val || !val.textContent) return;
 		const done = () => { btn.textContent = t('copied', 'Copied.'); };
+		// Never claim "Copied." when it wasn't — select the text so the
+		// reporter can copy it manually.
+		const fail = () => {
+			const range = document.createRange();
+			range.selectNodeContents(val);
+			const sel = window.getSelection();
+			if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+			btn.textContent = t('copy_manual', 'Select the code and copy it manually');
+		};
 		if (navigator.clipboard && navigator.clipboard.writeText) {
-			navigator.clipboard.writeText(val.textContent).then(done, done);
+			navigator.clipboard.writeText(val.textContent).then(done, fail);
 			return;
 		}
 		const ta = document.createElement('textarea');
 		ta.value = val.textContent;
 		document.body.appendChild(ta);
 		ta.select();
-		try { document.execCommand('copy'); } catch (e) { /* noop */ }
+		let ok = false;
+		try { ok = document.execCommand('copy'); } catch (e) { /* noop */ }
 		ta.remove();
-		done();
+		if (ok) done(); else fail();
 	}
 
 	document.addEventListener('DOMContentLoaded', () => {

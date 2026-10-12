@@ -69,7 +69,8 @@ test.describe('officer journey: inbox + case', () => {
 		const first = page.locator('[data-wc-inbox] tr[data-case-id]').first()
 		const count = await first.count()
 		if (count === 0) return // empty inbox is a valid state — rows optional
-		await first.focus()
+		// The title cell carries a real anchor — the keyboard path.
+		await first.locator('a.wc-case-link').focus()
 		await page.keyboard.press('Enter')
 		await expect(page).toHaveURL(/\/cases\/\d+/)
 	})
