@@ -156,7 +156,10 @@ OC.L10N.register(
     "Receipt confirmed.": "Empfang bestätigt.",
     "close_pending_self": "„{t}“ angefragt — ein:e zweite:r Sachbearbeiter:in muss bestätigen.",
     "close_pending_other": "„{t}“ wurde von {by} angefragt — zum Bestätigen denselben Button klicken.",
-    "close_pending_toast": "Anfrage gespeichert — ein:e zweite:r Sachbearbeiter:in muss bestätigen."
+    "close_pending_toast": "Anfrage gespeichert — ein:e zweite:r Sachbearbeiter:in muss bestätigen.",
+    "Enter your CURRENT passphrase to keep access to your cases": "Geben Sie Ihre AKTUELLE Passphrase ein, um den Zugriff auf Ihre Fälle zu behalten",
+    "{n} case(s) could not be re-wrapped and will need a re-grant from another officer. Rotate anyway?": "{n} Fall/Fälle konnte(n) nicht neu verschlüsselt werden und benötigen eine erneute Freigabe durch eine:n andere:n Sachbearbeiter:in. Trotzdem rotieren?",
+    "Your current key is not available on this device — rotating now locks you out of {n} case(s) until another officer re-wraps them. Continue?": "Ihr aktueller Schlüssel ist auf diesem Gerät nicht verfügbar — die Rotation sperrt Sie aus {n} Fall/Fällen aus, bis eine andere Person diese erneut freigibt. Fortfahren?"
 },
 	"nplurals=2; plural=(n != 1);"
 );

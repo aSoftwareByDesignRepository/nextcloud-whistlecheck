@@ -14,6 +14,7 @@ use OCA\WhistleCheck\Exception\ValidationException;
 use OCA\WhistleCheck\Service\AuditService;
 use OCA\WhistleCheck\Service\OfficerKeyService;
 use OCP\IGroup;
+use OCP\IDBConnection;
 use OCP\IGroupManager;
 use OCP\IUser;
 use OCP\IUserManager;
@@ -27,6 +28,7 @@ final class OfficerKeyServiceTest extends TestCase
 	private IUserManager&MockObject $users;
 	private IGroupManager&MockObject $groups;
 	private IGroup&MockObject $group;
+	private IDBConnection&MockObject $db;
 	private OfficerKeyService $svc;
 
 	protected function setUp(): void
@@ -36,6 +38,7 @@ final class OfficerKeyServiceTest extends TestCase
 		$this->users = $this->createMock(IUserManager::class);
 		$this->groups = $this->createMock(IGroupManager::class);
 		$this->group = $this->createMock(IGroup::class);
+		$this->db = $this->createMock(IDBConnection::class);
 		$this->groups->method('get')->willReturn($this->group);
 		$this->svc = new OfficerKeyService(
 			$this->officers,
@@ -44,6 +47,7 @@ final class OfficerKeyServiceTest extends TestCase
 			$this->createMock(AuditService::class),
 			$this->users,
 			$this->groups,
+			$this->db,
 		);
 	}
 
@@ -123,6 +127,80 @@ final class OfficerKeyServiceTest extends TestCase
 		$newKey = base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES));
 		$out = $this->svc->register('o1', $newKey, null);
 		$this->assertSame(3, $out->getKeyVersion());
+	}
+
+	public function testRotationRewrapsHeldCasesAtomically(): void
+	{
+		$existing = $this->activeOfficer('o1', 2);
+		$this->officers->method('findByUid')->willReturn($existing);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$w3 = new CaseKeyWrap(); $w3->setCaseId(3);
+		$w5 = new CaseKeyWrap(); $w5->setCaseId(5);
+		$this->wraps->method('findForOfficer')->willReturn([$w3, $w5]);
+		$this->db->expects($this->once())->method('beginTransaction');
+		$this->db->expects($this->once())->method('commit');
+		$inserted = [];
+		$this->wraps->expects($this->exactly(2))->method('insert')
+			->willReturnCallback(function (CaseKeyWrap $w) use (&$inserted) { $inserted[] = $w->getCaseId(); return $w; });
+		$out = $this->svc->register('o1', base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES)), null,
+			[3 => $this->sealedbox(), 5 => $this->sealedbox()]);
+		$this->assertSame([3, 5], $inserted);
+		$this->assertSame(3, $out->getKeyVersion());
+	}
+
+	public function testRotationRejectsWrapForUnheldCaseWithoutWiping(): void
+	{
+		// A self-wrap naming a case the officer never held must be rejected
+		// outright — the wrap row IS the authorization oracle; minting one
+		// on a foreign case would be blind-write privilege escalation.
+		$existing = $this->activeOfficer('o1', 2);
+		$this->officers->method('findByUid')->willReturn($existing);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$w3 = new CaseKeyWrap(); $w3->setCaseId(3);
+		$this->wraps->method('findForOfficer')->willReturn([$w3]);
+		$this->wraps->expects($this->never())->method('deleteForOfficer');
+		$this->officers->expects($this->never())->method('update');
+		$this->expectException(ValidationException::class);
+		$this->svc->register('o1', base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES)), null,
+			[9 => $this->sealedbox()]);
+	}
+
+	public function testRotationRejectsMalformedSelfWrap(): void
+	{
+		$existing = $this->activeOfficer('o1', 2);
+		$this->officers->method('findByUid')->willReturn($existing);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$w3 = new CaseKeyWrap(); $w3->setCaseId(3);
+		$this->wraps->method('findForOfficer')->willReturn([$w3]);
+		$this->expectException(ValidationException::class);
+		$this->svc->register('o1', base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES)), null,
+			[3 => 'not-an-envelope']);
+	}
+
+	public function testFirstRegisterRejectsSelfWraps(): void
+	{
+		// Held set is empty on first registration — wraps are rejected, not
+		// silently ignored.
+		$this->officers->method('findByUid')->willReturn(null);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$this->wraps->method('findForOfficer')->willReturn([]);
+		$this->expectException(ValidationException::class);
+		$this->svc->register('o1', base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES)), null,
+			[3 => $this->sealedbox()]);
+	}
+
+	public function testRotationRollsBackOnWrapInsertFailure(): void
+	{
+		$existing = $this->activeOfficer('o1', 2);
+		$this->officers->method('findByUid')->willReturn($existing);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$w3 = new CaseKeyWrap(); $w3->setCaseId(3);
+		$this->wraps->method('findForOfficer')->willReturn([$w3]);
+		$this->wraps->method('insert')->willThrowException(new \RuntimeException('db gone'));
+		$this->db->expects($this->once())->method('rollBack');
+		$this->expectException(\RuntimeException::class);
+		$this->svc->register('o1', base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES)), null,
+			[3 => $this->sealedbox()]);
 	}
 
 	// ── revoke ──────────────────────────────────────────────────────────

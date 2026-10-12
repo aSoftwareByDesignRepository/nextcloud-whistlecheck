@@ -390,7 +390,19 @@ class ApiController extends Controller
 	{
 		try {
 			$uid = $this->officerGuard();
-			$officer = $this->officerKeys->register($uid, $pubkey, $uid);
+			// Optional atomic re-wrap on rotation: {wraps: {caseId: envelope}} —
+			// the service only accepts case ids the officer already held.
+			$selfWraps = [];
+			$rawWraps = $this->request->getParam('wraps');
+			if (is_array($rawWraps)) {
+				foreach ($rawWraps as $k => $v) {
+					$cid = $this->intParam($k);
+					if ($cid !== null && is_string($v)) {
+						$selfWraps[$cid] = $v;
+					}
+				}
+			}
+			$officer = $this->officerKeys->register($uid, $pubkey, $uid, $selfWraps);
 			return $this->ok(['fingerprint' => $officer->getFingerprint(), 'key_version' => $officer->getKeyVersion()], 201);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);

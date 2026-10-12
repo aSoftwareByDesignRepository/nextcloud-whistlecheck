@@ -347,11 +347,49 @@
 		const genBtn = root.querySelector('[data-wc-genkey]');
 		if (genBtn) {
 			genBtn.addEventListener('click', async () => {
+				const officers = JSON.parse(boot().dataset.wcOfficers || '[]');
+				const meRec = officers.find((o) => o.uid === me && o.status === 'active');
+				const rotating = !!(meRec && meRec.pubkey);
+
 				const pass = window.prompt(t('prompt_newpass', 'Choose a passphrase for your case key (store it safely — it cannot be recovered)'));
 				if (!pass || pass.length < 10) { toast('error', t('err_passweak', 'Passphrase needs at least 10 characters.')); return; }
 				const kp = await window.WcCrypto.officerKeypair();
+
+				// ROTATION SAFETY: bumping key_version wipes every wrap sealed
+				// to the old key. Without an atomic re-wrap in the SAME request
+				// every case the officer holds becomes undecryptable —
+				// permanently when they are the only wrap-holder.
+				const body = { pubkey: kp.pubkey };
+				if (rotating) {
+					const held = (await api('/api/my-wraps')).wraps || [];
+					const blob = storedKeyBlob(me);
+					const oldPass = sessionStorage.getItem('wc_pass')
+						|| window.prompt(t('prompt_oldpass', 'Enter your CURRENT passphrase to keep access to your cases'));
+					const oldPub = await pubKey(me);
+					let rewraps = null;
+					if (blob && oldPass && oldPub) {
+						const oldPriv = await window.WcCrypto.unwrapPrivateKey(blob, oldPass);
+						if (oldPriv) {
+							rewraps = {};
+							let failed = 0;
+							for (const w of held) {
+								const ck = await window.WcCrypto.openSealed(w.wrapped_key, oldPub, oldPriv);
+								if (ck === null) { failed++; continue; }
+								rewraps[w.case_id] = await window.WcCrypto.sealToPubkey(ck, kp.pubkey);
+							}
+							if (failed > 0) {
+								if (!window.confirm(t('confirm_rotate_partial', '{n} case(s) could not be re-wrapped and will need a re-grant from another officer. Rotate anyway?').replace('{n}', String(failed)))) return;
+							}
+						}
+					}
+					if (rewraps === null && held.length > 0) {
+						if (!window.confirm(t('confirm_rotate_orphan', 'Your current key is not available on this device — rotating now locks you out of {n} case(s) until another officer re-wraps them. Continue?').replace('{n}', String(held.length)))) return;
+					}
+					if (rewraps !== null) body.wraps = rewraps;
+				}
+
 				const wrapped = await window.WcCrypto.wrapPrivateKey(kp.privkey, pass);
-				await api('/api/officers/key', { method: 'POST', body: { pubkey: kp.pubkey } });
+				await api('/api/officers/key', { method: 'POST', body });
 				localStorage.setItem(LS_PRIV + '_' + me, wrapped);
 				toast('success', t('key_saved', 'Key registered. Keep your passphrase safe.'));
 				location.reload();

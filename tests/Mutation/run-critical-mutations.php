@@ -143,6 +143,13 @@ $mutations = [
 		'filters' => ['AuditServiceTest'],
 	],
 	[
+		'name' => 'rotation_rewrap_scope_dropped',
+		'file' => 'lib/Service/OfficerKeyService.php',
+		'from' => 'if (!isset($held[(int)$caseId])) {',
+		'to' => 'if (false && !isset($held[(int)$caseId])) {',
+		'filters' => ['OfficerKeyServiceTest'],
+	],
+	[
 		'name' => 'device_cap_unchecked',
 		'file' => 'lib/Service/CompanionService.php',
 		'from' => 'if (count($devices) >= self::MAX_DEVICES) {',

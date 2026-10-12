@@ -156,7 +156,10 @@ OC.L10N.register(
     "Receipt confirmed.": "Receipt confirmed.",
     "close_pending_self": "\"{t}\" requested — a second officer must confirm.",
     "close_pending_other": "\"{t}\" requested by {by} — click the same button to confirm.",
-    "close_pending_toast": "Request recorded — a second officer must confirm."
+    "close_pending_toast": "Request recorded — a second officer must confirm.",
+    "Enter your CURRENT passphrase to keep access to your cases": "Enter your CURRENT passphrase to keep access to your cases",
+    "{n} case(s) could not be re-wrapped and will need a re-grant from another officer. Rotate anyway?": "{n} case(s) could not be re-wrapped and will need a re-grant from another officer. Rotate anyway?",
+    "Your current key is not available on this device — rotating now locks you out of {n} case(s) until another officer re-wraps them. Continue?": "Your current key is not available on this device — rotating now locks you out of {n} case(s) until another officer re-wraps them. Continue?"
 },
 	"nplurals=2; plural=(n != 1);"
 );

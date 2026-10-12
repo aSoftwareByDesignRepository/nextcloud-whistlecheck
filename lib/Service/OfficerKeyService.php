@@ -37,6 +37,7 @@ class OfficerKeyService
 		private readonly AuditService $audit,
 		private readonly IUserManager $userManager,
 		private readonly IGroupManager $groupManager,
+		private readonly \OCP\IDBConnection $db,
 	) {
 	}
 
@@ -57,7 +58,16 @@ class OfficerKeyService
 	 *
 	 * @throws DomainException
 	 */
-	public function register(string $uid, string $pubkeyB64, ?string $actorUid): Officer
+	/**
+	 * @param array<int,string> $selfWraps case_id → sealed-box envelope of the
+	 *   case key to the NEW pubkey. Allows atomic rotation+re-wrap: without it
+	 *   a rotation wipes the officer's wraps and orphans every case they held
+	 *   until another wrap-holder re-grants (or forever, if none exists).
+	 *   Self-wraps may only name cases the officer already holds — a wrap row
+	 *   is the authorization oracle, so minting one for a foreign case would
+	 *   be a blind-write privilege escalation.
+	 */
+	public function register(string $uid, string $pubkeyB64, ?string $actorUid, array $selfWraps = []): Officer
 	{
 		if (!$this->isOfficer($uid)) {
 			throw new DomainException('not_officer', 'Not a case officer', 403);
@@ -68,20 +78,52 @@ class OfficerKeyService
 		}
 		$fp = $this->envelope->pubkeyFingerprint($pubkeyB64);
 
+		// Snapshot held case ids BEFORE any wipe: a self-wrap may only
+		// re-cover a case the officer provably held under the old key —
+		// and on first registration the held set is empty, so wraps are
+		// rejected there too rather than silently ignored.
+		$held = [];
+		foreach ($this->wraps->findForOfficer($uid) as $w) {
+			$held[$w->getCaseId()] = true;
+		}
+		foreach ($selfWraps as $caseId => $envJson) {
+			if (!isset($held[(int)$caseId])) {
+				throw new ValidationException('invalid_wrap', 'Cannot re-wrap a case you do not hold', ['wraps' => 'foreign case']);
+			}
+			if (!is_string($envJson) || !$this->envelope->isValidEnvelope($envJson, EnvelopeService::ALG_SEALEDBOX)) {
+				throw new ValidationException('invalid_wrap', 'Invalid wrapped key', ['wraps' => 'invalid wrap']);
+			}
+		}
+
 		$existing = $this->officers->findByUid($uid);
 		if ($existing !== null && $existing->getStatus() === Officer::STATUS_ACTIVE) {
 			if ($existing->getPubkey() === $pubkeyB64) {
 				return $existing; // idempotent re-register — NOT a rotation
 			}
-			// Real rotation: new key version + wipe every wrap sealed to the
-			// old pubkey — they are undecryptable dead weight, and removing
-			// them makes re-wrap grants pure inserts (no clobber path).
-			$existing->setPubkey($pubkeyB64);
-			$existing->setFingerprint($fp);
-			$existing->setKeyVersion($existing->getKeyVersion() + 1);
-			$this->officers->update($existing);
-			$this->wraps->deleteForOfficer($uid);
-			$this->audit->record('officer_key_rotated', $uid, null, ['uid' => $uid, 'version' => $existing->getKeyVersion()]);
+			// Atomic: rotate + wipe + re-wrap in one commit — a failure
+			// mid-ceremony can no longer leave the officer wrapless.
+			$this->db->beginTransaction();
+			try {
+				$existing->setPubkey($pubkeyB64);
+				$existing->setFingerprint($fp);
+				$existing->setKeyVersion($existing->getKeyVersion() + 1);
+				$this->officers->update($existing);
+				$this->wraps->deleteForOfficer($uid);
+				foreach ($selfWraps as $caseId => $envJson) {
+					$wrap = new \OCA\WhistleCheck\Db\CaseKeyWrap();
+					$wrap->setCaseId((int)$caseId);
+					$wrap->setOfficerUid($uid);
+					$wrap->setWrappedKey($envJson);
+					$wrap->setGrantedBy($uid);
+					$wrap->setGrantedAt(new \DateTime('now', new \DateTimeZone('UTC')));
+					$this->wraps->insert($wrap);
+				}
+				$this->audit->record('officer_key_rotated', $uid, null, ['uid' => $uid, 'version' => $existing->getKeyVersion(), 'count' => count($selfWraps)]);
+				$this->db->commit();
+			} catch (\Throwable $e) {
+				$this->db->rollBack();
+				throw $e;
+			}
 			return $existing;
 		}
 
