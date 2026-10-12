@@ -86,13 +86,17 @@ final class OfficerKeyServiceTest extends TestCase
 	{
 		$target = $this->activeOfficer('o2');
 		$this->officers->method('findByUidForUpdate')->willReturn($target);
-		$this->wraps->method('findForCaseAndOfficer')->willReturn(null);
+		$this->wraps->method('findForCaseAndOfficer')
+			->willReturnMap([[7, 'o1', new CaseKeyWrap()]]); // grantor holds a wrap
+
 		$this->wraps->expects($this->once())->method('insert');
 		$this->svc->storeWraps(7, ['o2' => ['wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o1');
 	}
 
 	public function testStoreWrapsRejectsRevokedOrForeignUid(): void
 	{
+		$this->wraps->method('findForCaseAndOfficer')
+			->willReturnMap([[7, 'o1', new CaseKeyWrap()]]); // grantor holds a wrap
 		$this->officers->method('findByUidForUpdate')->willReturn(null);
 		$this->expectException(ValidationException::class);
 		$this->svc->storeWraps(7, ['ghost' => ['wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o1');
@@ -100,6 +104,8 @@ final class OfficerKeyServiceTest extends TestCase
 
 	public function testStoreWrapsRejectsMissingFingerprint(): void
 	{
+		$this->wraps->method('findForCaseAndOfficer')
+			->willReturnMap([[7, 'o1', new CaseKeyWrap()]]); // grantor holds a wrap
 		$this->officers->method('findByUidForUpdate')->willReturn($this->activeOfficer('o2'));
 		$this->expectException(ValidationException::class);
 		$this->svc->storeWraps(7, ['o2' => ['wrap' => $this->sealedbox()]], 'o1');
@@ -111,6 +117,8 @@ final class OfficerKeyServiceTest extends TestCase
 		// client to refetch pubkeys and re-seal, never a silent dead wrap.
 		$target = $this->activeOfficer('o2');
 		$target->setFingerprint('new-fp');
+		$this->wraps->method('findForCaseAndOfficer')
+			->willReturnMap([[7, 'o1', new CaseKeyWrap()]]); // grantor holds a wrap
 		$this->officers->method('findByUidForUpdate')->willReturn($target);
 		$this->wraps->expects($this->never())->method('insert');
 		try {
@@ -126,9 +134,37 @@ final class OfficerKeyServiceTest extends TestCase
 	{
 		$target = $this->activeOfficer('o2');
 		$this->officers->method('findByUidForUpdate')->willReturn($target);
-		$this->wraps->method('findForCaseAndOfficer')->willReturn(null);
+		$this->wraps->method('findForCaseAndOfficer')
+			->willReturnMap([[7, 'o1', new CaseKeyWrap()]]); // grantor holds a wrap
+
 		$this->wraps->expects($this->once())->method('insert');
 		$this->svc->storeWraps(7, [['uid' => 'o2', 'wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o1');
+	}
+
+	public function testStoreWrapsRejectsNonHolderGrantor(): void
+	{
+		// Re-wrap may only be minted by an officer holding a wrap on the
+		// case — 'o3' holds nothing on case 7 → 403, never an insert.
+		$this->wraps->method('findForCaseAndOfficer')->willReturn(null);
+		$this->wraps->expects($this->never())->method('insert');
+		try {
+			$this->svc->storeWraps(7, ['o2' => ['wrap' => $this->sealedbox(), 'fp' => 'fp']], 'o3');
+			$this->fail('expected non-holder rejection');
+		} catch (\OCA\WhistleCheck\Exception\DomainException $e) {
+			$this->assertSame('not_a_holder', $e->errorCode);
+			$this->assertSame(403, $e->httpStatus);
+		}
+	}
+
+	public function testStoreWrapsAnonymousSubmitSkipsGrantorInvariant(): void
+	{
+		// Initial submit passes grantedBy=null — the reporter holds nothing
+		// and the invariant must not apply (it would reject every report).
+		$target = $this->activeOfficer('o2');
+		$this->officers->method('findByUidForUpdate')->willReturn($target);
+		$this->wraps->method('findForCaseAndOfficer')->willReturn(null);
+		$this->wraps->expects($this->once())->method('insert');
+		$this->svc->storeWraps(7, ['o2' => ['wrap' => $this->sealedbox(), 'fp' => 'fp']], null);
 	}
 
 	// ── rotation ────────────────────────────────────────────────────────

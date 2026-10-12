@@ -189,6 +189,11 @@ class OfficerKeyService
 			'uid' => $o->getUid(),
 			'pubkey' => $o->getPubkey(),
 			'fingerprint' => $o->getFingerprint(),
+			// Embeds feed boot-data lists where clients branch on status
+			// (officers page decides setup-vs-rotate on it). Tautological
+			// here — findActive() only returns active — but the field must
+			// exist or every consumer's status check silently misses.
+			'status' => $o->getStatus(),
 		], $this->officers->findActive());
 	}
 
@@ -228,6 +233,16 @@ class OfficerKeyService
 
 	private function storeWrapsLocked(int $caseId, array $wraps, ?string $grantedBy): void
 	{
+		// Grantor invariant — a re-wrap may only be minted by an officer who
+		// holds a wrap on this case. Checked inside the transaction so a
+		// concurrent revoke cannot interleave between check and insert.
+		// The initial anonymous submit passes $grantedBy=null: the reporter
+		// holds nothing, the invariant does not apply.
+		if ($grantedBy !== null
+			&& $this->wraps->findForCaseAndOfficer($caseId, $grantedBy) === null) {
+			throw new DomainException('not_a_holder', 'You do not hold a wrap for this case', 403);
+		}
+
 		// Normalize wire forms to uid => {wrap, fp}.
 		$wrapsByUid = [];
 		foreach ($wraps as $key => $entry) {

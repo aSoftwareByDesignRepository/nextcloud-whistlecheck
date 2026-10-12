@@ -193,6 +193,115 @@ test.describe('officer full journey (fresh fixture)', () => {
 	})
 })
 
+test.describe('re-grant ceremony (fresh fixtures)', () => {
+	test('orphaned officer gets re-granted and can decrypt again', async ({ browser, baseURL }) => {
+		test.setTimeout(300000)
+		// Two-officer flow: A decrypts, B rotates without re-wrap (fresh
+		// context = no local blob → informed orphan path) and loses the wrap.
+		// A's case page must list B under "Grant access"; after the grant B
+		// must see and decrypt the case again — a phantom grant (success
+		// toast, no stored wrap) fails this test at the last assertion.
+		const officerA = provisionOfficer()
+		const officerB = provisionOfficer()
+		const passA = 'grant-a-pass-9x42'
+		const passB1 = 'grant-b-one-9x42'
+		const passB2 = 'grant-b-two-9x42'
+		const ctxA = await browser.newContext({ baseURL })
+		try {
+			const pageA = await ctxA.newPage()
+			await login(pageA, { username: officerA.uid, password: officerA.password })
+			await pageA.goto('/apps/whistlecheck/officers', { waitUntil: 'domcontentloaded' })
+			await pageA.locator('[data-wc-newpass]').fill(passA)
+			await pageA.locator('[data-wc-newpass2]').fill(passA)
+			await pageA.locator('[data-wc-genkey]').click()
+			await expect(pageA.locator('tbody[data-wc-officers] tr', { hasText: officerA.uid }))
+				.toContainText('active', { timeout: 45000 })
+
+			const ctxB1 = await browser.newContext({ baseURL })
+			const pageB = await ctxB1.newPage()
+			await login(pageB, { username: officerB.uid, password: officerB.password })
+			await pageB.goto('/apps/whistlecheck/officers', { waitUntil: 'domcontentloaded' })
+			await pageB.locator('[data-wc-newpass]').fill(passB1)
+			await pageB.locator('[data-wc-newpass2]').fill(passB1)
+			await pageB.locator('[data-wc-genkey]').click()
+			await expect(pageB.locator('tbody[data-wc-officers] tr', { hasText: officerB.uid }))
+				.toContainText('active', { timeout: 45000 })
+
+			// Anonymous report wraps to BOTH active officers.
+			const pubCtx = await browser.newContext({ baseURL })
+			const pub = await pubCtx.newPage()
+			const bodyText = `grant journey ${Date.now()}`
+			await pub.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
+			await pub.locator('#wc-body').fill(bodyText)
+			await pub.locator('#wc-report-form [type=submit]').click()
+			await expect(pub.locator('#wc-code-panel .wc-code-value')).not.toBeEmpty({ timeout: 90000 })
+			await pubCtx.close()
+			await ctxB1.close()
+
+			// B rotates in a FRESH context — no key blob on this "device" →
+			// the informed orphan path (confirm click) wipes B's wraps.
+			const ctxB2 = await browser.newContext({ baseURL })
+			const pageB2 = await ctxB2.newPage()
+			await login(pageB2, { username: officerB.uid, password: officerB.password })
+			await pageB2.goto('/apps/whistlecheck/officers', { waitUntil: 'domcontentloaded' })
+			await pageB2.locator('[data-wc-newpass]').fill(passB2)
+			await pageB2.locator('[data-wc-newpass2]').fill(passB2)
+			await pageB2.locator('[data-wc-genkey]').click()
+			await expect(pageB2.locator('[data-wc-keyreg-err]')).toBeVisible({ timeout: 15000 })
+			// Wait for the rotation commit, not the row status: B is already
+			// 'active' pre-rotation, so a status assertion resolves spuriously
+			// and navigating away mid-POST aborts the post-commit handler
+			// (sessSet + reload) — a lost session passphrase, not a server bug.
+			const rotResp = pageB2.waitForResponse(
+				(r) => r.url().includes('/api/officers/key') && r.request().method() === 'POST',
+				{ timeout: 30000 })
+			const reloaded = pageB2.waitForEvent('load', { timeout: 30000 })
+			await pageB2.locator('[data-wc-genkey]').click() // explicit orphan confirm
+			expect((await rotResp).status()).toBe(201)
+			// The post-commit handler runs sessSet → location.reload(); the
+			// reload's load event guarantees both landed before we navigate.
+			await reloaded
+
+			// B's inbox must NOT show the case — the wrap is gone.
+			await pageB2.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
+			await expect(pageB2.locator('.wc-loading')).toBeHidden({ timeout: 20000 })
+			// An API error would render tr.wc-load-error (no data-case-id) —
+			// count(0) alone would pass spuriously on a failed inbox load.
+			await expect(pageB2.locator('[data-wc-inbox] tr.wc-load-error')).toHaveCount(0)
+			await expect(pageB2.locator('[data-wc-inbox] tr[data-case-id]')).toHaveCount(0)
+
+			// A opens the case (auto-unlock from session passphrase) and
+			// re-grants B through the grant panel.
+			await pageA.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
+			const row = pageA.locator('[data-wc-inbox] tr[data-case-id]').first()
+			await expect(row).toBeVisible({ timeout: 20000 })
+			await row.locator('a.wc-case-link').click()
+			await expect(pageA).toHaveURL(/\/cases\/\d+/)
+			await expect(pageA.locator('[data-wc-messages]')).toContainText(bodyText, { timeout: 30000 })
+
+			const grantSec = pageA.locator('[data-wc-grant]')
+			await expect(grantSec).toBeVisible({ timeout: 15000 })
+			const grantRow = pageA.locator('[data-wc-grant-list] li', { hasText: officerB.uid })
+			await expect(grantRow).toBeVisible()
+			await grantRow.locator('button').click()
+			await expect(grantSec).toBeHidden({ timeout: 15000 })
+
+			// The decisive check: B sees and decrypts the case with the NEW
+			// passphrase — proves the wrap actually landed (no phantom).
+			await pageB2.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
+			const rowB = pageB2.locator('[data-wc-inbox] tr[data-case-id]').first()
+			await expect(rowB).toBeVisible({ timeout: 20000 })
+			await rowB.locator('a.wc-case-link').click()
+			await expect(pageB2.locator('[data-wc-messages]')).toContainText(bodyText, { timeout: 30000 })
+			await ctxB2.close()
+		} finally {
+			await ctxA.close().catch(() => {})
+			deprovisionOfficer(officerA.uid)
+			deprovisionOfficer(officerB.uid)
+		}
+	})
+})
+
 test.describe('responsive: no horizontal overflow at phone width', () => {
 	const mobile = { width: 390, height: 844 }
 

@@ -373,6 +373,9 @@ class ApiController extends Controller
 			$this->officerGuard();
 			$out = array_map(static fn (Officer $o) => [
 				'uid' => $o->getUid(),
+				// Pubkey is not secret — every public report page embeds it —
+				// and the grant retry needs it to re-seal a fresh wrap.
+				'pubkey' => $o->getPubkey(),
 				'fingerprint' => $o->getFingerprint(),
 				'status' => $o->getStatus(),
 				'key_version' => $o->getKeyVersion(),
@@ -423,21 +426,21 @@ class ApiController extends Controller
 				throw new ValidationException('invalid', 'Missing wraps', ['wraps' => 'required']);
 			}
 			$granted = 0;
-			foreach ($wraps as $key => $envelopeJson) {
-				if (!is_string($key) || !is_string($envelopeJson) || !str_contains($key, ':')) {
-					continue;
+			foreach ($wraps as $key => $entry) {
+				// Fail-closed: a malformed entry is a client bug, never skip
+				// silently (a skipped entry + success toast = phantom grant).
+				if (!is_string($key) || !str_contains($key, ':')) {
+					throw new ValidationException('invalid', 'Malformed wrap key', ['wraps' => 'invalid']);
 				}
 				[$caseIdStr, $targetUid] = explode(':', $key, 2);
 				$caseId = $this->intParam($caseIdStr);
-				if ($caseId === null) {
-					continue;
+				if ($caseId === null || !is_array($entry)) {
+					throw new ValidationException('invalid', 'Malformed wrap entry', ['wraps' => 'invalid']);
 				}
-				// Grantor must hold a wrap on the case — this is the
-				// re-wrap authorization invariant (prevents foreign grants).
-				if ($this->wrapMapper->findForCaseAndOfficer($caseId, $uid) === null) {
-					continue;
-				}
-				$this->officerKeys->storeWraps($caseId, [$targetUid => $envelopeJson], $uid);
+				// storeWraps enforces the re-wrap authorization invariant
+				// inside its transaction: the grantor must hold a wrap on
+				// the case (prevents foreign grants), checked under lock.
+				$this->officerKeys->storeWraps($caseId, [$targetUid => $entry], $uid);
 				$granted++;
 			}
 			$this->audit->record('wraps_granted', $uid, null, ['count' => $granted]);
