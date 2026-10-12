@@ -73,26 +73,43 @@ class RateLimitServiceTest extends TestCase
 		}
 	}
 
-	public function testCheckHardCapBeyondDoubleLimit(): void
+	public function testCheckPowRequiredAboveBaseLimitNotHardBlocked(): void
+	{
+		// Spec US-006 AC-6: over-cap requests escalate to PoW — no hard block.
+		// Even far above the cap (but under the HARD_MULT ceiling) a request
+		// without proof gets pow_required, not rate_limited.
+		$this->locks->method('acquireLock');
+		$this->locks->method('releaseLock');
+		$this->mapper->method('hit')->willReturn(40); // >> 2× submit limit (5)
+		try {
+			$this->svc->check('10.0.0.1', 'submit');
+			$this->fail('expected DomainException');
+		} catch (DomainException $e) {
+			$this->assertSame(429, $e->getCode());
+			$this->assertSame('pow_required', $e->errorCode);
+		}
+	}
+
+	public function testCheckHardCapBeyondTenfoldLimit(): void
 	{
 		$this->locks->method('acquireLock');
 		$this->locks->method('releaseLock');
-		$this->mapper->method('hit')->willReturn(11); // > 2x submit limit
+		$this->mapper->method('hit')->willReturn(51); // > 10× submit limit (5)
 		try {
-			$this->svc->check('10.0.0.1', 'submit');
+			$this->svc->check('10.0.0.1', 'submit', powOk: true);
 			$this->fail('expected DomainException');
 		} catch (DomainException $e) {
 			$this->assertSame('rate_limited', $e->errorCode);
 		}
 	}
 
-	public function testPowDoublesLimit(): void
+	public function testPowUnlocksAboveCapBelowCeiling(): void
 	{
 		$this->locks->method('acquireLock');
 		$this->locks->method('releaseLock');
-		$this->mapper->method('hit')->willReturn(6); // over 5, under 2x5
+		$this->mapper->method('hit')->willReturn(49); // over 5, under 10×5
 		$this->svc->check('10.0.0.1', 'submit', powOk: true);
-		$this->addToAssertionCount(1); // no throw = doubled cap applied
+		$this->addToAssertionCount(1); // fresh bound proof unlocks the request
 	}
 
 	public function testLockContentionDegradesTo429Not500(): void

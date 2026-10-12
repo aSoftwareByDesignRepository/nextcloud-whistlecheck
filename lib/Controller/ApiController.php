@@ -112,8 +112,10 @@ class ApiController extends Controller
 		try {
 			$uid = $this->officerGuard();
 			$today = $this->deadlines->today();
+			$rows = $this->caseMapper->listInbox(501);
+			$truncated = count($rows) > 500;
 			$out = [];
-			foreach ($this->caseMapper->listInbox() as $case) {
+			foreach (array_slice($rows, 0, 500) as $case) {
 				$wrap = $this->wrapMapper->findForCaseAndOfficer($case->getId(), $uid);
 				if ($wrap === null) {
 					continue; // US-007 AC-2: pre-grant cases are invisible, not "locked"
@@ -135,7 +137,7 @@ class ApiController extends Controller
 					'title_cipher' => $case->getTitleCipher(),
 				];
 			}
-			return $this->ok(['cases' => $out]);
+			return $this->ok(['cases' => $out, 'truncated' => $truncated]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
 		}

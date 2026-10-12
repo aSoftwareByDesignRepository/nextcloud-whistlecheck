@@ -52,7 +52,7 @@ class WcaseMapper extends QBMapper
 	 *
 	 * @return list<Wcase>
 	 */
-	public function listInbox(int $limit = 200, int $offset = 0): array
+	public function listInbox(int $limit = 500, int $offset = 0): array
 	{
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')->from($this->getTableName())

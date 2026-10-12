@@ -49,6 +49,9 @@ final class CaseServiceTest extends TestCase
 		$this->cases = $this->createMock(WcaseMapper::class);
 		$this->officerKeys = $this->createMock(OfficerKeyService::class);
 		$this->config = $this->createMock(ConfigService::class);
+		// two_person_close defaults ON in production (DEFAULTS['1']) — mirror it.
+		$this->config->method('getBool')->willReturnCallback(
+			static fn (string $k) => $k === 'two_person_close');
 		$this->users = $this->createMock(IUserManager::class);
 		// Mirror the real CAS write: bump the entity's revision and report 1
 		// affected row (0 would mean a concurrent write won → ConflictException).
@@ -432,6 +435,18 @@ final class CaseServiceTest extends TestCase
 		$this->cases->method('find')->willReturn($case);
 		$this->expectException(ValidationException::class);
 		$this->svc->reply(1, 'officer', 'not-an-envelope', 'o1', 0);
+	}
+
+	public function testReporterCanReplyOnClosedCase(): void
+	{
+		// Spec US-002 AC-4: only ARCHIVED is read-only — a `closed` case may
+		// still receive a reporter message before archival.
+		$case = $this->case(Wcase::STATUS_CLOSED, 3);
+		$this->cases->method('find')->willReturn($case);
+		$envelope = new EnvelopeService();
+		$cipher = $envelope->seal('reporter note', $envelope->randomKey());
+		$out = $this->svc->reply(1, 'reporter', $cipher, null, null);
+		$this->assertSame(Wcase::STATUS_CLOSED, $out->getStatus());
 	}
 
 	public function testReplyToTerminalCaseRejected(): void

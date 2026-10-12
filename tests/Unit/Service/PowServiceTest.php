@@ -89,6 +89,44 @@ final class PowServiceTest extends TestCase
 		$this->assertFalse($this->svc->verify('bucket-b', $c['challenge'], $nonce, 8));
 	}
 
+	public function testVerifyBindPinsProofToRequest(): void
+	{
+		$bucket = 'bucket-a';
+		$c = $this->svc->issue($bucket);
+		$nonce = $this->solveBound($c['challenge'], 'ikey-123', 8);
+		$this->assertTrue($this->svc->verify($bucket, $c['challenge'], $nonce, 8, 'ikey-123'));
+		// Same proof under a different bind = replay → rejected.
+		$this->assertFalse($this->svc->verify($bucket, $c['challenge'], $nonce, 8, 'ikey-999'));
+		$this->assertFalse($this->svc->verify($bucket, $c['challenge'], $nonce, 8));
+	}
+
+	private function solveBound(string $challengeB64, string $bind, int $difficulty): string
+	{
+		$challenge = base64_decode($challengeB64, true);
+		while (true) {
+			$nonce = random_bytes(16);
+			$digest = hash('sha256', $challenge . $bind . $nonce, true);
+			if ($this->lz($digest) >= $difficulty) {
+				return base64_encode($nonce);
+			}
+		}
+	}
+
+	private function lz(string $bytes): int
+	{
+		$bits = 0;
+		foreach (str_split($bytes) as $b) {
+			$v = ord($b);
+			for ($m = 7; $m >= 0; $m--) {
+				if (($v >> $m) & 1) {
+					return $bits;
+				}
+				$bits++;
+			}
+		}
+		return $bits;
+	}
+
 	public function testVerifyRejectsForgedChallenge(): void
 	{
 		$this->assertFalse($this->svc->verify('bucket-a', base64_encode('forged'), base64_encode(random_bytes(16)), 8));

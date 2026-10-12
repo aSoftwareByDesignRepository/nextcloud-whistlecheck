@@ -27,6 +27,7 @@ class ConfigService
 		'org_name', 'retention_months', 'reminder_days',
 		'escalation_uid', 'attachments_enabled', 'max_attachment_mb',
 		'welcome_text', 'nojs_enabled', 'require_pow_after',
+		'two_person_close',
 	];
 
 	private const INT_KEYS = [
@@ -36,7 +37,7 @@ class ConfigService
 		'require_pow_after' => [1, 100],
 	];
 
-	private const BOOL_KEYS = ['attachments_enabled', 'nojs_enabled'];
+	private const BOOL_KEYS = ['attachments_enabled', 'nojs_enabled', 'two_person_close'];
 
 	public const DEFAULTS = [
 		'org_name' => '',
@@ -48,6 +49,7 @@ class ConfigService
 		'welcome_text' => '',
 		'nojs_enabled' => '1',
 		'require_pow_after' => '2',
+		'two_person_close' => '1',
 	];
 
 	public function __construct(

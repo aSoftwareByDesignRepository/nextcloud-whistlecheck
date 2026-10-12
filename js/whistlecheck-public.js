@@ -41,6 +41,29 @@
 		if (box) { box.hidden = true; box.textContent = ''; }
 	}
 
+	// Rate-bucket kind per endpoint — the challenge must be issued for the
+	// same bucket the request is checked against (spec US-006).
+	const POW_KIND = {
+		'/api/public/submit': 'submit',
+		'/api/public/attachment': 'submit',
+		'/api/public/case/params': 'params',
+		'/api/public/case/open': 'verify',
+		'/api/public/case/reply': 'reply',
+	};
+
+	/**
+	 * PoW bind for a request body — mirrors the server's derivation in
+	 * PublicApiController: ikey for submit, hint for case ops, sha256 hex of
+	 * the envelope for attachments. Binds the proof to THIS request so a
+	 * solved challenge cannot be replayed against different payloads.
+	 */
+	async function powBind(body) {
+		if (body && body.ikey) return String(body.ikey);
+		if (body && body.hint) return String(body.hint);
+		if (body && body.cipher) return window.WcCrypto.sha256Hex(body.cipher);
+		return '';
+	}
+
 	/**
 	 * fetch wrapper with one automatic PoW retry: on 429/pow_required the
 	 * challenge is solved and the request re-issued with proof headers.
@@ -50,10 +73,10 @@
 		if (res.status === 429) {
 			const payload = await safeJson(res);
 			if (payload && (payload.error === 'POW_REQUIRED' || payload.error === 'pow_required')) {
-				const ch = await post('/api/public/pow', { kind: 'submit' }, {});
+				const ch = await post('/api/public/pow', { kind: POW_KIND[path] || 'submit' }, {});
 				const chBody = await safeJson(ch);
 				if (chBody && chBody.success && chBody.data && chBody.data.challenge) {
-					const nonce = await window.WcCrypto.solvePow(chBody.data.challenge, chBody.data.difficulty || 18);
+					const nonce = await window.WcCrypto.solvePow(chBody.data.challenge, chBody.data.difficulty || 18, await powBind(body));
 					return post(path, body, { 'X-Wc-Pow-Challenge': chBody.data.challenge, 'X-Wc-Pow-Nonce': nonce });
 				}
 			}

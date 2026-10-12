@@ -95,7 +95,7 @@ class PublicApiController extends Controller
 	public function submit(): JSONResponse
 	{
 		try {
-			$powOk = $this->powProof('submit');
+			$powOk = $this->powProof('submit', (string)$this->request->getParam('ikey', ''));
 			$this->rate->check($this->ip(), 'submit', $powOk);
 			$result = $this->cases->submit($this->request->getParams(), true);
 			return $this->ok($result, 201);
@@ -113,7 +113,7 @@ class PublicApiController extends Controller
 	public function caseParams(string $hint = ''): JSONResponse
 	{
 		try {
-			$powOk = $this->powProof('params');
+			$powOk = $this->powProof('params', $hint);
 			$this->rate->check($this->ip(), 'params', $powOk);
 			return $this->ok($this->cases->paramsByHint($hint));
 		} catch (\Throwable $e) {
@@ -129,7 +129,7 @@ class PublicApiController extends Controller
 	public function caseOpen(string $hint = '', string $verifier = ''): JSONResponse
 	{
 		try {
-			$powOk = $this->powProof('verify');
+			$powOk = $this->powProof('verify', $hint);
 			$this->rate->check($this->ip(), 'verify', $powOk);
 			return $this->ok($this->cases->openByHint($hint, $verifier));
 		} catch (\Throwable $e) {
@@ -146,7 +146,7 @@ class PublicApiController extends Controller
 	public function caseReply(string $hint = '', string $verifier = '', string $cipher = ''): JSONResponse
 	{
 		try {
-			$powOk = $this->powProof('reply');
+			$powOk = $this->powProof('reply', $hint);
 			$this->rate->check($this->ip(), 'reply', $powOk);
 			$caseId = $this->cases->replyAsReporterByHint($hint, $verifier, $cipher);
 			return $this->ok(['case_id' => $caseId], 201);
@@ -164,7 +164,7 @@ class PublicApiController extends Controller
 	public function attachment(string $cipher, string $mime): JSONResponse
 	{
 		try {
-			$powOk = $this->powProof('submit');
+			$powOk = $this->powProof('submit', hash('sha256', $cipher));
 			$this->rate->check($this->ip(), 'submit', $powOk);
 			$size = $this->attachmentPolicy->validateCipher($cipher, $mime);
 			return $this->ok(['size' => $size]);
@@ -181,16 +181,17 @@ class PublicApiController extends Controller
 	}
 
 	/**
-	 * Optional PoW proof headers — when present and valid, the bucket limit
-	 * doubles for this window (escalation, not lockout).
+	 * Optional PoW proof headers. The proof must be bound to this request's
+	 * unique value (`$bind`: ikey / hint / attachment digest) — a challenge
+	 * solved once cannot be replayed for other requests.
 	 */
-	private function powProof(string $kind): bool
+	private function powProof(string $kind, string $bind = ''): bool
 	{
 		$challenge = (string)$this->request->getHeader('X-Wc-Pow-Challenge');
 		$nonce = (string)$this->request->getHeader('X-Wc-Pow-Nonce');
 		if ($challenge === '' || $nonce === '') {
 			return false;
 		}
-		return $this->pow->verify($this->rate->bucketFor($this->ip(), $kind), $challenge, $nonce);
+		return $this->pow->verify($this->rate->bucketFor($this->ip(), $kind), $challenge, $nonce, \OCA\WhistleCheck\Service\PowService::DIFFICULTY, $bind);
 	}
 }

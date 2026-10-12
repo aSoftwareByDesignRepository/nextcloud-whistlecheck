@@ -30,6 +30,15 @@ use OCP\Lock\LockedException;
  */
 class RateLimitService
 {
+	/**
+	 * Absolute ceiling as a multiple of the base limit — even with valid PoW.
+	 * Spec wants escalation, never a hard block for shared-NAT reporters:
+	 * above the base limit every request needs a fresh request-bound PoW
+	 * (see PowService::verify $bind), which is the throttle. This multiplier
+	 * is the last-resort bound against runaway floods.
+	 */
+	private const HARD_MULT = 10;
+
 	private const KIND_SUBMIT = 'submit';
 	private const KIND_PARAMS = 'params';
 	private const KIND_VERIFY = 'verify';
@@ -70,9 +79,10 @@ class RateLimitService
 	}
 
 	/**
-	 * Record one hit. Throws 429 with Retry-After when over limit — unless
-	 * `powOk` shows the client already cleared the escalated proof, in which
-	 * case the cap doubles for this window (spec US-006 AC-3).
+	 * Record one hit. Over the base limit the client must present a valid PoW
+	 * bound to *this* request (spec US-006: escalation, not a hard block —
+	 * reporters often share a corporate NAT). A documented absolute ceiling
+	 * (limit × HARD_MULT) still applies to bound floods.
 	 *
 	 * @throws DomainException 429 'rate_limited' / 'pow_required'
 	 */
@@ -98,12 +108,14 @@ class RateLimitService
 			$this->lockProvider->releaseLock('wchk.rate.' . substr($bucket, 0, 32), ILockingProvider::LOCK_EXCLUSIVE);
 		}
 
-		$limit = $powOk ? $spec['limit'] * 2 : $spec['limit'];
-		if ($hits > $limit) {
+		if ($hits > $spec['limit']) {
 			$retry = $spec['window'];
-			// Escalation tier: first breach asks for PoW, second breach is a hard cap.
-			$code = $hits <= $spec['limit'] * 2 ? 'pow_required' : 'rate_limited';
-			throw new DomainException($code, 'Too many requests', 429, $retry);
+			if ($hits > $spec['limit'] * self::HARD_MULT) {
+				throw new DomainException('rate_limited', 'Too many requests', 429, $retry);
+			}
+			if (!$powOk) {
+				throw new DomainException('pow_required', 'Too many requests', 429, $retry);
+			}
 		}
 	}
 

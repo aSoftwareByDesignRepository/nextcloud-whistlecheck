@@ -373,8 +373,9 @@ class CaseService
 		if ($case === null) {
 			throw new DomainException('not_found', 'Not found', 404);
 		}
-		// Reporter side is read-only once the procedure ended (spec US-002 AC-4).
-		if ($case->isTerminal()) {
+		// Only ARCHIVED is read-only (spec US-002 AC-4) — a `closed` case may
+		// still receive messages; officers can reopen it from there.
+		if ($case->getStatus() === Wcase::STATUS_ARCHIVED) {
 			throw new DomainException('case_closed', 'Case closed', 409);
 		}
 		if (!in_array($direction, ['reporter', 'officer'], true)
@@ -449,7 +450,8 @@ class CaseService
 		if ($to === Wcase::STATUS_CLOSED || $to === Wcase::STATUS_ARCHIVED) {
 			// NH-05 two-person rule — only when ≥2 active officers exist; a
 			// single-officer org must not be locked out of closing.
-			$needsSecond = count($this->officerKeys->activePubkeys()) >= 2;
+			$needsSecond = $this->config->getBool('two_person_close')
+				&& count($this->officerKeys->activePubkeys()) >= 2;
 			if ($needsSecond) {
 				$requester = $case->getCloseRequestedBy();
 				// NULL target = legacy row from before close_requested_to existed;
@@ -632,7 +634,7 @@ class CaseService
 			'status' => $case->getStatus(),
 			'received_at' => $case->getReceivedAt()->format(\DateTime::ATOM),
 			'feedback_due' => $case->getFeedbackDue()->format('Y-m-d'),
-			'readonly' => $case->isTerminal(),
+			'readonly' => $case->getStatus() === Wcase::STATUS_ARCHIVED,
 			'reporter_wrap' => $case->getReporterWrap(),
 			'key_salt' => $case->getKeySalt(),
 			'messages' => $msgs,

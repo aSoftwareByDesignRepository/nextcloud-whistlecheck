@@ -53,10 +53,12 @@ class PowService
 	}
 
 	/**
-	 * Verify a client answer: sha256(challenge || nonce) must lead with
-	 * `difficulty` zero bits. Constant-time-ish — cheap check, bounded inputs.
+	 * Verify a client answer: sha256(challenge ‖ bind ‖ nonce) must lead with
+	 * `difficulty` zero bits. `bind` pins the proof to one request (submit ikey,
+	 * case hint, attachment digest) — a solved challenge cannot be replayed
+	 * across different requests, so each escalated request costs fresh work.
 	 */
-	public function verify(string $bucket, string $challengeB64, string $nonceB64, int $difficulty = self::DIFFICULTY): bool
+	public function verify(string $bucket, string $challengeB64, string $nonceB64, int $difficulty = self::DIFFICULTY, string $bind = ''): bool
 	{
 		$challenge = base64_decode($challengeB64, true);
 		$nonce = base64_decode($nonceB64, true);
@@ -75,7 +77,7 @@ class PowService
 		if (!$valid) {
 			return false;
 		}
-		$digest = hash('sha256', $challenge . $nonce, true);
+		$digest = hash('sha256', $challenge . $bind . $nonce, true);
 		return $this->leadingZeroBits($digest) >= $difficulty;
 	}
 

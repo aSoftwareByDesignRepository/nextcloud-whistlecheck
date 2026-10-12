@@ -267,15 +267,20 @@
 
 	// ── PoW ──────────────────────────────────────────────────────────────
 
-	/** Solve sha256(challenge || nonce) leading-zero-bits ≥ difficulty. */
-	async function solvePow(challengeB64, difficulty) {
+	/**
+	 * Solve sha256(challenge ‖ bind ‖ nonce) leading-zero-bits ≥ difficulty.
+	 * `bind` pins the proof to one request (ikey / hint / attachment digest)
+	 * so a solved challenge is worthless for any other request.
+	 */
+	async function solvePow(challengeB64, difficulty, bindStr) {
 		const s = await sodium();
 		const challenge = fromB64(s, challengeB64);
+		const bind = utf8(bindStr || '');
 		for (let i = 0; i < 0xffffffff; i++) {
 			const nonce = new Uint8Array(8);
 			nonce.set(s.randombytes_buf(8));
-			const msg = new Uint8Array(challenge.length + nonce.length);
-			msg.set(challenge); msg.set(nonce, challenge.length);
+			const msg = new Uint8Array(challenge.length + bind.length + nonce.length);
+			msg.set(challenge); msg.set(bind, challenge.length); msg.set(nonce, challenge.length + bind.length);
 			const digest = s.crypto_hash_sha256(msg);
 			if (leadingZeros(digest) >= difficulty) {
 				return b64Sync(s, nonce);
@@ -283,6 +288,12 @@
 			if (i % 2000 === 1999) await new Promise((r) => setTimeout(r, 0)); // yield UI
 		}
 		throw new Error('pow_exhausted');
+	}
+
+	/** Lower-hex sha256 of a string — used as the attachment PoW bind. */
+	async function sha256Hex(str) {
+		const s = await sodium();
+		return s.to_hex(s.crypto_hash_sha256(utf8(str)));
 	}
 
 	function leadingZeros(bytes) {
@@ -301,6 +312,6 @@
 		sodium, encode, decode, format, hint, verifier, reporterKey,
 		seal, sealBytes, sealChunked, open, openBytes, sealToPubkey, openSealed,
 		officerKeypair, wrapPrivateKey, unwrapPrivateKey, fingerprint,
-		randomKey, randomHex, solvePow,
+		randomKey, randomHex, solvePow, sha256Hex,
 	};
 })();
