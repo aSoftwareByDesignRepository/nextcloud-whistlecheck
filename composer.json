@@ -1,0 +1,46 @@
+{
+	"name": "software-by-design/nextcloud-whistlecheck",
+	"description": "Anonymous, end-to-end encrypted whistleblowing channel (HinSchG / EU 2019/1937)",
+	"type": "project",
+	"license": "AGPL-3.0-or-later",
+	"authors": [
+		{
+			"name": "Alexander Mäule",
+			"email": "info@software-by-design.de"
+		}
+	],
+	"require": {
+		"php": ">=8.2",
+		"ext-sodium": "*"
+	},
+	"require-dev": {
+		"dg/bypass-finals": "^1.8",
+		"nextcloud/ocp": "^32.0 || ^33.0 || ^34.0 || ^35.0",
+		"phpunit/phpunit": "^9.6",
+		"symfony/http-foundation": "^7.4",
+		"symfony/string": "^7.4"
+	},
+	"autoload": {
+		"psr-4": {
+			"OCA\\WhistleCheck\\": "lib/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"OCA\\WhistleCheck\\Tests\\": "tests/",
+			"OCP\\": "vendor/nextcloud/ocp/OCP/",
+			"NCU\\": "vendor/nextcloud/ocp/NCU/"
+		}
+	},
+	"scripts": {
+		"test": "phpunit --testsuite unit",
+		"test:unit": "phpunit --testsuite unit",
+		"test:integration": "phpunit --testsuite integration",
+		"test:all": "phpunit",
+		"test:mutation": "php tests/Mutation/run-critical-mutations.php"
+	},
+	"config": {
+		"optimize-autoloader": true,
+		"sort-packages": true
+	}
+}

@@ -1,0 +1,9 @@
+/node_modules/
+/vendor/
+/build/
+/test-results/
+/playwright-report/
+/.phpunit.result.cache
+/.auth/
+/e2e/.env
+docs/private/

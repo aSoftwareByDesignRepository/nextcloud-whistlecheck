@@ -1,0 +1,189 @@
+/* [hidden] wins over any display rule */
+[hidden]{display:none!important}
+
+/*
+ * SPDX-FileCopyrightText: 2026 Alexander Mäule <info@software-by-design.de>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * WhistleCheck public reporter pages — standalone, scoped (.wc-*), tokens only.
+ * No third-party assets, no frameworks — spec NN-07.
+ */
+
+.wc-public {
+	min-height: 100vh;
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	/* NC guest layout centers #content with fixed top/bottom offsets and
+	 * clips overflow — our long-form pages must instead pin to the viewport
+	 * and scroll, or the submit button is unreachable (a11y + responsive). */
+	top: 0 !important;
+	bottom: 0 !important;
+	left: 0 !important;
+	right: 0 !important;
+	overflow-y: auto !important;
+}
+/* NC guest layout: #content is position:fixed + flex — main must scroll
+ * itself (min-height:0 lets the flex item shrink; overflow-y:auto makes the
+ * long form scrollable instead of clipped below the fold). */
+.wc-public-main {
+	overflow-y: auto;
+	min-height: 0;
+	max-width: 680px;
+	margin: 0 auto;
+	padding: 32px 20px 80px;
+	font-size: 1.05em;
+	line-height: 1.55;
+}
+.wc-public-main h1 { font-size: 1.7em; margin: 0 0 8px; }
+.wc-public-main h2 { font-size: 1.2em; margin: 24px 0 8px; }
+.wc-org { font-size: 1.1em; color: var(--color-text-maxcontrast); margin: 0 0 4px; }
+
+.wc-e2e-badge {
+	display: inline-block;
+	padding: 4px 12px;
+	border-radius: 999px;
+	border: 1px solid var(--color-success);
+	font-weight: 700;
+	margin: 4px 0 0;
+}
+.wc-welcome { margin: 16px 0; }
+
+.wc-field { margin: 0 0 20px; }
+.wc-field label { display: block; font-weight: 700; margin-bottom: 6px; }
+.wc-field input[type=text], .wc-field textarea, .wc-field select,
+.wc-field input:not([type]), .wc-field input[type=file] {
+	width: 100%;
+	min-height: 48px;
+	font: inherit;
+	padding: 10px 12px;
+	border: 2px solid var(--color-border-dark, var(--color-border));
+	border-radius: 8px;
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	box-sizing: border-box;
+}
+.wc-field textarea { min-height: 120px; resize: vertical; }
+.wc-hint { font-size: 0.9em; color: var(--color-text-maxcontrast); margin: 6px 0 0; }
+
+.wc-hp {
+	position: absolute;
+	left: -10000px;
+	top: auto;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+}
+
+.wc-honesty {
+	padding: 12px 16px;
+	border-inline-start: 5px solid var(--color-warning);
+	background: var(--color-background-hover);
+	border-radius: 6px;
+	font-weight: 600;
+}
+.wc-error {
+	padding: 14px 18px;
+	margin: 16px 0;
+	border-inline-start: 5px solid var(--color-error);
+	background: var(--color-background-hover);
+	border-radius: 6px;
+	font-weight: 700;
+}
+.wc-notice {
+	padding: 14px 18px;
+	margin: 16px 0;
+	border-inline-start: 5px solid var(--color-success);
+	background: var(--color-background-hover);
+	border-radius: 6px;
+	font-weight: 600;
+}
+.wc-field-error { display: block; margin-top: 6px; color: var(--color-error); font-weight: 700; }
+[aria-invalid="true"] { border-color: var(--color-error) !important; }
+
+.wc-btn-primary, .wc-btn-secondary {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	min-height: 52px;
+	padding: 0 24px;
+	border-radius: 8px;
+	font: inherit;
+	font-weight: 700;
+	font-size: 1.05em;
+	cursor: pointer;
+	text-decoration: none;
+	box-sizing: border-box;
+}
+.wc-btn-primary {
+	background: var(--color-primary-element);
+	color: var(--color-primary-element-text);
+	border: none;
+}
+.wc-btn-primary:hover { background: var(--color-primary-element-hover); }
+.wc-btn-secondary {
+	background: transparent;
+	border: 2px solid var(--color-border-dark, var(--color-border));
+	color: var(--color-main-text);
+}
+.wc-btn-secondary:hover { background: var(--color-background-hover); }
+
+.wc-contact-opt { margin: 0 0 20px; }
+.wc-contact-opt summary {
+	min-height: 44px;
+	display: flex;
+	align-items: center;
+	cursor: pointer;
+	font-weight: 600;
+}
+.wc-warn { border-inline-start-color: var(--color-warning); }
+
+.wc-code-panel {
+	padding: 20px;
+	border: 2px solid var(--color-success);
+	border-radius: 12px;
+	margin: 24px 0;
+}
+.wc-code-value, .wc-code-value code {
+	font-size: 1.5em;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	font-family: monospace;
+	word-break: break-all;
+	margin: 8px 0;
+	display: block;
+}
+
+.wc-messages { list-style: none; padding: 0; margin: 0 0 20px; display: flex; flex-direction: column; gap: 10px; }
+.wc-msg {
+	max-width: 85%;
+	padding: 12px 16px;
+	border-radius: 12px;
+	border: 1px solid var(--color-border);
+}
+.wc-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wc-msg-me { align-self: flex-end; background: var(--color-primary-element-light); }
+.wc-msg-them { align-self: flex-start; background: var(--color-background-hover); }
+.wc-msg time { font-size: 0.8em; color: var(--color-text-maxcontrast); }
+
+.wc-skip {
+	position: absolute;
+	inset-inline-start: 8px;
+	top: -48px;
+	z-index: 4000;
+	background: var(--color-main-background);
+	padding: 12px 18px;
+	border-radius: 6px;
+	font-weight: 700;
+}
+.wc-skip:focus { top: 8px; }
+
+:focus-visible {
+	outline: 3px solid var(--color-primary-element);
+	outline-offset: 2px;
+	border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wc-public * { transition: none !important; animation: none !important; }
+}

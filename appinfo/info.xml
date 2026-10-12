@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<!--
+  - SPDX-FileCopyrightText: 2026 Alexander Mäule <info@software-by-design.de>
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+	<id>whistlecheck</id>
+	<name>WhistleCheck</name>
+	<name lang="de">WhistleCheck</name>
+	<summary>Anonymous, end-to-end encrypted whistleblowing channel (HinSchG / EU 2019/1937)</summary>
+	<summary lang="de">Anonymer, Ende-zu-Ende-verschlüsselter Hinweisgeberkanal (HinSchG / EU 2019/1937)</summary>
+	<description><![CDATA[
+# WhistleCheck — anonymous whistleblowing channel for Nextcloud
+
+WhistleCheck gives organisations a HinSchG/EU-Directive-ready internal reporting channel that runs entirely on their own Nextcloud: anonymous, login-free report submission, end-to-end encrypted two-way messaging, statutory deadline tracking, and verifiable retention deletion — with no plaintext ever stored on the server.
+
+**Free AGPL web app.** Client-side encryption via libsodium; a no-JavaScript fallback encrypts server-side and tells the reporter honestly.
+
+## Highlights
+
+- Anonymous submission without account, cookie or session — strict CSP, no third-party requests
+- End-to-end encryption: per-case content keys wrapped to every case officer and to the reporter's one-time case code
+- Reporter follow-up via case code only — constant-time verification, no existence oracles
+- Statutory workflow built in: automatic receipt confirmation (§ 17 (1) HinSchG), 3-month feedback clock with reminders
+- Case management for officers: inbox, statuses, assignment, encrypted internal notes, legal hold, two-person close rule (optional)
+- Verifiable retention: crypto-shredding after the configurable retention period (§ 11 (5) HinSchG)
+- Append-only, hash-chained audit log — proves the procedure, never leaks content
+- Configurable channel texts, categories, attachment policy, retention and access — plus a companion API for the mobile app
+- Translations (English, German), WCAG 2.1 AA
+
+## Feedback welcome
+
+We improve this app with real-world use. Bug reports, rough edges, and ideas help — open a GitHub Issue (https://github.com/aSoftwareByDesignRepository/nextcloud-whistlecheck/issues) or write to info@software-by-design.de. Your feedback directly shapes what we build next.
+
+## Requirements
+
+- Nextcloud 32–35 · PHP 8.2–8.5 with the sodium extension
+	]]></description>
+	<description lang="de"><![CDATA[
+# WhistleCheck — anonymer Hinweisgeberkanal für Nextcloud
+
+WhistleCheck stellt Organisationen einen HinSchG-/EU-Richtlinie-konformen internen Meldekanal bereit, der vollständig auf der eigenen Nextcloud läuft: anonyme, loginfreie Meldungen, Ende-zu-Ende-verschlüsselte Kommunikation in beide Richtungen, gesetzliche Fristen und nachweisbare Löschung — ohne dass je Klartext auf dem Server liegt.
+
+**Kostenlose AGPL-Web-App.** Client-seitige Verschlüsselung per libsodium; ohne JavaScript verschlüsselt der Server und weist ehrlich darauf hin.
+
+## Highlights
+
+- Anonyme Meldung ohne Konto, Cookie oder Session — strikte CSP, keine Drittrequests
+- Ende-zu-Ende-Verschlüsselung: eigener Inhaltsschlüssel pro Fall, versiegelt für jede Sachbearbeitung und für den einmaligen Fall-Code der meldenden Person
+- Rückfragen über den Fall-Code — zeitkonstante Prüfung, keine Existenz-Orakel
+- Gesetzlicher Ablauf eingebaut: automatische Eingangsbestätigung (§ 17 Abs. 1 HinSchG), 3-Monats-Frist mit Erinnerungen
+- Fallbearbeitung: Eingang, Status, Zuweisung, verschlüsselte interne Notizen, Legal Hold, optionales Vier-Augen-Prinzip
+- Nachweisbare Löschung per Crypto-Shredding nach Ablauf der Aufbewahrungsfrist (§ 11 Abs. 5 HinSchG)
+- Append-only Audit-Log mit Hash-Kette — belegt das Verfahren, verrät nie Inhalte
+- Konfigurierbare Texte, Kategorien, Anhangs-Policy, Aufbewahrung und Zugang — plus Companion-API für die mobile App
+- Übersetzungen (Deutsch, Englisch), WCAG 2.1 AA
+
+## Feedback willkommen
+
+Wir verbessern diese App mit Rückmeldungen aus der Praxis. Fehlerberichte, Stolpersteine und Ideen helfen — öffnen Sie ein GitHub Issue (https://github.com/aSoftwareByDesignRepository/nextcloud-whistlecheck/issues) oder schreiben Sie an info@software-by-design.de. Ihr Feedback prägt direkt, was wir als Nächstes bauen.
+
+## Voraussetzungen
+
+- Nextcloud 32–35 · PHP 8.2–8.5 mit Sodium-Erweiterung
+	]]></description>
+	<version>1.0.0</version>
+	<licence>agpl</licence>
+	<author mail="info@software-by-design.de" homepage="https://nextcloud.software-by-design.de/">Alexander Mäule</author>
+	<namespace>WhistleCheck</namespace>
+	<category>organization</category>
+	<category>security</category>
+	<website>https://nextcloud.software-by-design.de/</website>
+	<bugs>https://github.com/aSoftwareByDesignRepository/nextcloud-whistlecheck/issues</bugs>
+	<repository type="git">https://github.com/aSoftwareByDesignRepository/nextcloud-whistlecheck.git</repository>
+	<documentation>
+		<user>https://github.com/aSoftwareByDesignRepository/nextcloud-whistlecheck#readme</user>
+		<admin>https://github.com/aSoftwareByDesignRepository/nextcloud-whistlecheck#readme</admin>
+	</documentation>
+	<dependencies>
+		<php min-version="8.2" max-version="8.5"/>
+		<nextcloud min-version="32" max-version="35"/>
+		<!-- Read by MigrationService for migration naming / Oracle constraints — keep duplicated under release -->
+		<database>mysql</database>
+		<database>pgsql</database>
+	</dependencies>
+	<background-jobs>
+		<job>OCA\WhistleCheck\BackgroundJob\DeadlineReminderJob</job>
+		<job>OCA\WhistleCheck\BackgroundJob\RetentionJob</job>
+	</background-jobs>
+	<keywords>
+		<keyword>whistleblowing</keyword>
+		<keyword>hinweisgeber</keyword>
+		<keyword>HinSchG</keyword>
+		<keyword>compliance</keyword>
+		<keyword>anonymous</keyword>
+		<keyword>encryption</keyword>
+	</keywords>
+	<navigations>
+		<navigation>
+			<name>WhistleCheck</name>
+			<route>whistlecheck.page.index</route>
+			<icon>app.svg</icon>
+			<order>2</order>
+			<type>link</type>
+		</navigation>
+	</navigations>
+	<settings>
+		<admin>OCA\WhistleCheck\Settings\AdminSettings</admin>
+		<admin-section>OCA\WhistleCheck\Settings\AdminSection</admin-section>
+	</settings>
+	<commands>
+		<command>OCA\WhistleCheck\Command\UpgradeBackupCommand</command>
+	</commands>
+
+	<repair-steps>
+		<install>
+			<step>OCA\WhistleCheck\Repair\EnsureWhistleCheckSchema</step>
+			<step>OCA\WhistleCheck\Repair\EnsureWhistleCheckDefaults</step>
+		</install>
+		<post-migration>
+			<step>OCA\WhistleCheck\Repair\EnsureWhistleCheckSchema</step>
+			<step>OCA\WhistleCheck\Repair\EnsureWhistleCheckDefaults</step>
+		</post-migration>
+		<pre-migration>
+			<step>OCA\WhistleCheck\Repair\BackupBeforeUpdate</step>
+		</pre-migration>
+		<uninstall>
+			<step>OCA\WhistleCheck\Repair\UninstallDropTables</step>
+		</uninstall>
+	</repair-steps>
+</info>

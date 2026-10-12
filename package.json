@@ -1,0 +1,16 @@
+{
+  "name": "whistlecheck",
+  "private": true,
+  "description": "WhistleCheck Nextcloud app \u2014 Playwright a11y / UX gauntlet",
+  "scripts": {
+    "check:l10n": "php scripts/check-l10n-parity.php && php scripts/regenerate-l10n-js.php",
+    "e2e": "playwright test",
+    "e2e:a11y": "playwright test e2e/a11y-smoke.spec.js e2e/public-form.spec.js",
+    "e2e:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.56.1"
+  },
+  "type": "module"
+}
