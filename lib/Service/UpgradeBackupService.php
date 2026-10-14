@@ -257,7 +257,7 @@ class UpgradeBackupService
 			foreach ($pgTriggerTables as $pgTable) {
 				try {
 					$this->db->executeStatement(
-						'ALTER TABLE ' . $this->db->quoteIdentifier($this->tablePrefix() . $pgTable) . ' DISABLE TRIGGER ALL',
+						'ALTER TABLE ' . $this->quotePgIdent($this->tablePrefix() . $pgTable) . ' DISABLE TRIGGER ALL',
 					);
 					$pgTriggersDisabled[] = $pgTable;
 				} catch (\Throwable $e) {
@@ -280,7 +280,7 @@ class UpgradeBackupService
 
 			foreach ($pgTriggersDisabled as $pgTable) {
 				$this->db->executeStatement(
-					'ALTER TABLE ' . $this->db->quoteIdentifier($this->tablePrefix() . $pgTable) . ' ENABLE TRIGGER ALL',
+					'ALTER TABLE ' . $this->quotePgIdent($this->tablePrefix() . $pgTable) . ' ENABLE TRIGGER ALL',
 				);
 			}
 
@@ -673,6 +673,17 @@ class UpgradeBackupService
 	private function tablePrefix(): string
 	{
 		return (string)$this->config->getSystemValue('dbtableprefix', 'oc_');
+	}
+
+	/**
+	 * Double-quote a Postgres identifier. Only used on the Postgres restore
+	 * branch; the input is whitelist-derived (prefix + BACKUP_TABLES name).
+	 * `IDBConnection` does not expose `quoteIdentifier()` (runtime-only on
+	 * `OC\DB\Connection`), so we quote locally.
+	 */
+	private function quotePgIdent(string $name): string
+	{
+		return '"' . str_replace('"', '""', $name) . '"';
 	}
 
 	private function truncateTableIfExists(string $table): void
