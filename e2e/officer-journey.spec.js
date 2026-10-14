@@ -57,15 +57,23 @@ test.describe('officer pages: boot integrity (U1 regression)', () => {
 			// Attribute junk must never leak as visible text.
 			await expect(page.locator('body')).not.toContainText('data-wc-page=')
 
-			// Skip link is a real element and focusable.
+			// Skip links (content + navigation) are real elements and focusable.
 			const skip = page.locator('.wc-skip-link')
-			await expect(skip).toHaveCount(1)
+			await expect(skip).toHaveCount(2)
 
-			// Shared nav on every page, current page marked.
-			const nav = page.locator('.wc-nav').first()
+			// Shared sidebar nav on every page, current page marked.
+			const nav = page.locator('#app-navigation.wc-nav')
 			await expect(nav).toBeVisible()
 			expect(await nav.locator('a').count()).toBeGreaterThanOrEqual(6)
 			await expect(nav.locator('[aria-current="page"]')).toHaveCount(1)
+
+			// Design-system chrome: brand, icon-well page header, breadcrumb,
+			// scope strip — same skeleton as the other Check apps.
+			await expect(nav.locator('.wc-brand__title')).toHaveText('WhistleCheck')
+			await expect(page.locator('.wc-page-header__icon')).toBeVisible()
+			await expect(page.locator('#wc-page-title')).toBeVisible()
+			await expect(page.locator('.wc-breadcrumb__current')).toBeVisible()
+			await expect(page.locator('.wc-scope-strip')).toBeVisible()
 		})
 	}
 })
@@ -102,6 +110,20 @@ test.describe('officer journey: inbox + nav (fresh fixture)', () => {
 			await expect(page.locator('.wc-nav').first()).toBeVisible()
 			await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
 		}
+	})
+
+	test('mobile drawer: Menu button opens the sidebar below 1024px', async ({ page }) => {
+		await page.setViewportSize({ width: 390, height: 844 })
+		await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
+		const toggle = page.locator('#wc-nav-toggle')
+		await expect(toggle).toBeVisible()
+		await toggle.click()
+		const nav = page.locator('#app-navigation.wc-nav')
+		await expect(nav).toHaveClass(/wc-nav--open/)
+		await expect(nav.locator('.wc-nav__link').first()).toBeVisible()
+		// Escape closes and returns focus to the toggle.
+		await page.keyboard.press('Escape')
+		await expect(nav).not.toHaveClass(/wc-nav--open/)
 	})
 
 	test('officer inbox renders as cards at 390px', async ({ page }) => {

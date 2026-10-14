@@ -51,6 +51,23 @@ class NotificationService
 		}
 	}
 
+	/**
+	 * Retention sweep failed on consecutive runs (NFR observability) — not tied
+	 * to a case, so the notification object is the job, not a case id.
+	 */
+	public function notifyRetentionFailure(): void
+	{
+		foreach ($this->officers->findActive() as $officer) {
+			$n = $this->notifications->createNotification();
+			$n->setApp(self::APP)
+				->setUser($officer->getUid())
+				->setDateTime(new \DateTime('now', new \DateTimeZone('UTC')))
+				->setObject('job', 'retention')
+				->setSubject('wchk.retention_failed', []);
+			$this->notifications->notify($n);
+		}
+	}
+
 	private function notify(Officer $officer, string $subject, string $caseId): void
 	{
 		$n = $this->notifications->createNotification();

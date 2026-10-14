@@ -117,10 +117,12 @@ class PageController extends Controller
 	{
 		Util::addScript('whistlecheck', 'vendor/libsodium-sumo');
 		Util::addScript('whistlecheck', 'vendor/libsodium-wrappers');
+		Util::addScript('whistlecheck', 'vendor/qrcode.min');
 		Util::addScript('whistlecheck', 'common/wc-crypto');
 		Util::addScript('whistlecheck', 'common/field-errors');
+		Util::addScript('whistlecheck', 'common/mobile-nav');
 		Util::addScript('whistlecheck', 'whistlecheck-main');
-		Util::addStyle('whistlecheck', 'whistlecheck');
+		Util::addStyle('whistlecheck', 'app');
 		$res = new TemplateResponse('whistlecheck', $template, array_merge([
 			'urlGenerator' => $this->urlGenerator,
 			'config' => $this->config->getAll(),
@@ -154,6 +156,9 @@ class PageController extends Controller
 			'inbox_empty' => $this->l->t('No cases yet.'),
 			'case_fallback_title' => $this->l->t('Case #'),
 			'case_locked' => $this->l->t('Unlock your key to read this case.'),
+			'case_locked_note' => $this->l->t('Case contents are locked — unlock your key above to read them.'),
+			'nokey_hint' => $this->l->t('Your officer key is not on this device. Set it up on the Officers page to read cases.'),
+			'nokey_link' => $this->l->t('Open key settings'),
 			'err_nokey' => $this->l->t('Unlock your key to read this case.'),
 			'err_decrypt' => $this->l->t('Decryption failed.'),
 			'err_pass' => $this->l->t('Wrong passphrase — try again.'),
@@ -180,6 +185,7 @@ class PageController extends Controller
 			'copied' => $this->l->t('Copied.'),
 			'no_attachments' => $this->l->t('No attachments.'),
 			'no_devices' => $this->l->t('No paired devices.'),
+			'pair_no_key' => $this->l->t('Your key is not on this device — the app can pair but cannot decrypt cases until the key is transferred.'),
 			'col_case' => $this->l->t('Case'),
 			'col_status' => $this->l->t('Status'),
 			'col_due' => $this->l->t('Feedback due'),
@@ -203,6 +209,10 @@ class PageController extends Controller
 			'archived' => $this->l->t('Archived'),
 			'locked' => $this->l->t('Locked'),
 			'err_generic' => $this->l->t('Something went wrong. Please try again.'),
+			'esc_none' => $this->l->t('No escalations yet.'),
+			'esc_by' => $this->l->t('by'),
+			'esc_created' => $this->l->t('Ticket created.'),
+			'esc_replayed' => $this->l->t('This export was already sent.'),
 		];
 	}
 

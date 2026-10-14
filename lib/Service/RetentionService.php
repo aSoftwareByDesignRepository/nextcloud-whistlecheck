@@ -41,6 +41,7 @@ class RetentionService
 		private readonly WmessageMapper $messages,
 		private readonly WattachmentMapper $attachments,
 		private readonly WnoteMapper $notes,
+		private readonly \OCA\WhistleCheck\Db\EscalationMapper $escalations,
 		private readonly DeadlineService $deadlines,
 		private readonly AuditService $audit,
 		private readonly NotificationService $notify,
@@ -95,6 +96,7 @@ class RetentionService
 			$this->messages->deleteForCase($caseId);       // 3. ciphertext
 			$this->notes->deleteForCase($caseId);
 			$this->idem->deleteForCase($caseId);           // 3b. idem key → no stale replay success
+			$this->escalations->deleteForCase($caseId);    // 3c. export refs die with the case
 			$this->cases->deleteById($caseId);             // 4. case row
 			$this->audit->record('case_deleted', null, $caseId, []); // 5. proof
 			$this->db->commit();

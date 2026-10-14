@@ -21,8 +21,11 @@ use OCP\Lock\LockedException;
  * Every entry:
  *   hash = sha256(prev_hash || seq || event || actor || case_id || payload || created_at)
  *
- * Chain extension is serialized through a global advisory lock — a concurrent
- * append can never fork the chain (spec §6 audit invariants).
+ * Chain extension is serialized two ways: a global advisory lock covers the
+ * compute-and-insert window, and the tail row is read FOR UPDATE so the
+ * row lock outlives the advisory lock until the caller's transaction commits.
+ * Without the row lock a second appender could compute the same seq against
+ * the not-yet-committed tail and die on the unique index (spec §6 invariants).
  *
  * PAYLOAD CONTRACT: whitelisted scalar keys only. A caller passing anything
  * else gets it dropped, never stored — the audit can structurally not carry
@@ -74,7 +77,7 @@ class AuditService
 			throw new DomainException('busy', 'Busy — retry', 503);
 		}
 		try {
-			$prev = $this->mapper->findLast();
+			$prev = $this->mapper->findLastForUpdate();
 			$seq = $prev === null ? 1 : $prev->getSeq() + 1;
 			$prevHash = $prev === null ? self::GENESIS : $prev->getHash();
 

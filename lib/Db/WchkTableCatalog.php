@@ -24,6 +24,7 @@ final class WchkTableCatalog
 		'wchk_cases',
 		'wchk_categories',
 		'wchk_config',
+		'wchk_escalations',
 		'wchk_form_tokens',
 		'wchk_idem',
 		'wchk_messages',

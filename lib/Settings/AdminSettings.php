@@ -24,7 +24,7 @@ class AdminSettings implements ISettings
 	public function getForm(): TemplateResponse
 	{
 		Util::addScript('whistlecheck', 'whistlecheck-admin');
-		Util::addStyle('whistlecheck', 'whistlecheck');
+		Util::addStyle('whistlecheck', 'app');
 		return new TemplateResponse('whistlecheck', 'admin', [
 			'config' => $this->config->getAll(),
 			'revisions' => $this->config->revisions(),

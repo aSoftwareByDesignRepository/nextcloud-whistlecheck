@@ -327,9 +327,15 @@ class PublicPageController extends Controller
 			'err_generic' => $this->l->t('Something went wrong. Please try again.'),
 			'err_invalid_code' => $this->l->t('Invalid or expired case code.'),
 			'err_notready' => $this->l->t('This channel is not ready yet. Please try again later.'),
+			'sending' => $this->l->t('Sending…'),
+			'opening' => $this->l->t('Opening…'),
 			'e2e_badge' => $this->l->t('End-to-end encrypted'),
 			'nojs_badge' => $this->l->t('Encrypted in transit and at rest (JavaScript disabled)'),
 			'receipt_text' => $this->l->t('Your report was received. Case officers can now read and answer it.'),
+			'copied' => $this->l->t('Copied.'),
+			'copy_manual' => $this->l->t('Select the code and copy it manually'),
+			'show_qr' => $this->l->t('Show QR code'),
+			'hide_qr' => $this->l->t('Hide QR code'),
 		];
 	}
 
@@ -389,6 +395,7 @@ class PublicPageController extends Controller
 		Util::addStyle('whistlecheck', 'whistlecheck-public');
 		Util::addScript('whistlecheck', 'vendor/libsodium-sumo');
 		Util::addScript('whistlecheck', 'vendor/libsodium-wrappers');
+		Util::addScript('whistlecheck', 'vendor/qrcode.min');
 		Util::addScript('whistlecheck', 'common/wc-crypto');
 		Util::addScript('whistlecheck', 'common/field-errors');
 		Util::addScript('whistlecheck', 'whistlecheck-public');

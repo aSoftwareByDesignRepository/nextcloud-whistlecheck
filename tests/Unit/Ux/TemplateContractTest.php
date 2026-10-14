@@ -12,14 +12,15 @@ namespace OCA\WhistleCheck\Tests\Unit\Ux;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Design-system chrome contract: every officer template carries a skip link
- * and a labelled main landmark (checklist: shared chrome). Public templates
- * use the wc-skip variant.
+ * Design-system chrome contract: every officer template opens the shared
+ * page-start shell (sidebar nav, skip links, live regions, breadcrumb,
+ * icon-well page header, labelled <main>). Public templates use the wc-skip
+ * variant. Admin is an embedded NC settings fragment — no app chrome.
  */
 final class TemplateContractTest extends TestCase
 {
 	private const OFFICER_TEMPLATES = [
-		'admin', 'audit', 'case', 'inbox', 'officers', 'settings', 'stats', 'verbal',
+		'audit', 'case', 'inbox', 'officers', 'settings', 'stats', 'verbal',
 	];
 
 	private const PUBLIC_TEMPLATES = [
@@ -28,12 +29,44 @@ final class TemplateContractTest extends TestCase
 
 	private const DIR = __DIR__ . '/../../../templates/';
 
-	public function testOfficerTemplatesHaveSkipLinkAndMainLandmark(): void
+	public function testOfficerTemplatesUseSharedShell(): void
 	{
 		foreach (self::OFFICER_TEMPLATES as $name) {
 			$src = file_get_contents(self::DIR . $name . '.php');
-			$this->assertStringContainsString('wc-skip-link', $src, $name);
-			$this->assertStringContainsString('id="wc-main"', $src, $name);
+			$this->assertStringContainsString('common/page-start.php', $src, $name);
+			$this->assertStringContainsString('common/page-end.php', $src, $name);
+			$this->assertStringContainsString('$_[' . "'wc_page'", $src, $name);
+			$this->assertStringNotContainsString('id="app-content"', $src, $name . ' must not open its own shell');
+			$this->assertStringNotContainsString('parts/nav.php', $src, $name);
+		}
+	}
+
+	public function testSharedShellCarriesDesignSystemChrome(): void
+	{
+		$start = file_get_contents(self::DIR . 'common/page-start.php');
+		foreach ([
+			'navigation.php', 'wc-skip-link', 'id="wc-main"',
+			'wc-live-region', 'wc-alert-region', 'wc-breadcrumb',
+			'wc-page-header__icon', 'wc-page-title', 'wc-page-header__actions',
+			'wc-nav-toggle', 'wc-scope-strip',
+		] as $needle) {
+			$this->assertStringContainsString($needle, $start);
+		}
+
+		$nav = file_get_contents(self::DIR . 'common/navigation.php');
+		foreach ([
+			'id="app-navigation"', 'wc-brand', 'wc-nav__list',
+			'wc-nav__sublist', 'aria-current', 'IconCatalog::render',
+		] as $needle) {
+			$this->assertStringContainsString($needle, $nav);
+		}
+	}
+
+	public function testOfficerTemplatesMarkSidebarCurrent(): void
+	{
+		foreach (self::OFFICER_TEMPLATES as $name) {
+			$src = file_get_contents(self::DIR . $name . '.php');
+			$this->assertStringContainsString('$_[' . "'wc_nav_current'", $src, $name);
 		}
 	}
 
@@ -46,11 +79,11 @@ final class TemplateContractTest extends TestCase
 		}
 	}
 
-	public function testOfficerTemplatesExposeI18nForJs(): void
+	public function testAdminIsEmbeddedFragmentWithoutAppChrome(): void
 	{
-		foreach (['audit', 'case', 'inbox', 'officers', 'settings', 'stats', 'verbal'] as $name) {
-			$src = file_get_contents(self::DIR . $name . '.php');
-			$this->assertStringContainsString('data-wc-i18n', $src, $name);
-		}
+		$src = file_get_contents(self::DIR . 'admin.php');
+		$this->assertStringNotContainsString('id="app-content"', $src);
+		$this->assertStringNotContainsString('page-start.php', $src);
+		$this->assertStringNotContainsString('id="app-navigation"', $src);
 	}
 }

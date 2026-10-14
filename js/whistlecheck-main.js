@@ -69,6 +69,27 @@
 		if (toastState[key]) { toastState[key].el.remove(); delete toastState[key]; }
 	}
 
+	/** Render text into a QR canvas (vendored qrcode-generator, error level M). */
+	function renderQr(canvas, text) {
+		if (!canvas || !window.qrcode) return;
+		const q = window.qrcode(0, 'M');
+		q.addData(text);
+		q.make();
+		const count = q.getModuleCount();
+		const size = canvas.width || 260;
+		const cell = Math.max(1, Math.floor(size / (count + 8)));
+		const off = Math.floor((size - cell * count) / 2);
+		const ctx = canvas.getContext('2d');
+		ctx.fillStyle = '#fff';
+		ctx.fillRect(0, 0, size, size);
+		ctx.fillStyle = '#000';
+		for (let r = 0; r < count; r++) {
+			for (let c = 0; c < count; c++) {
+				if (q.isDark(r, c)) ctx.fillRect(off + c * cell, off + r * cell, cell, cell);
+			}
+		}
+	}
+
 	function copyText(text) {
 		if (navigator.clipboard && navigator.clipboard.writeText) {
 			return navigator.clipboard.writeText(text);
@@ -242,6 +263,17 @@
 			if (!priv) {
 				unlockPrivateKey().then((k) => { if (k && seq === inboxSeq) initInbox(root); }).catch(() => {});
 			}
+		} else {
+			// No key on this device at all — "locked" rows alone are a dead
+			// end. Point the officer at the fix instead.
+			const hint = root.querySelector('[data-wc-inbox-hint]');
+			if (hint) {
+				hint.textContent = t('nokey_hint', 'Your officer key is not on this device. Set it up on the Officers page to read cases.') + ' ';
+				const a = document.createElement('a');
+				a.href = base + '/officers';
+				a.textContent = t('nokey_link', 'Open key settings');
+				hint.appendChild(a);
+			}
 		}
 
 		try {
@@ -362,37 +394,62 @@
 		// Fetch is done — the visible blocker is now the unlock panel
 		// (user action), not the spinner. aria-busy must reflect that.
 		done();
-		// Action buttons stay inert until decryption succeeds and
-		// bindCaseActions wires their handlers — otherwise a click before
-		// unlock would fire an unbound native form submit and lose the text.
-		body.querySelectorAll('form [type=submit], [data-wc-status], [data-wc-assign]').forEach((el) => { el.disabled = true; });
+		// Crypto-bound controls (reply/note submit) stay inert until
+		// decryption succeeds and bindCryptoActions wires them. Metadata
+		// actions (status, assign, hold, escalate) need NO case key —
+		// they are bound immediately so a locked case is still workable.
+		body.querySelectorAll('form [type=submit]').forEach((el) => { el.disabled = true; });
 		const me = boot().wcUid;
 		root.dataset.revision = data.revision;
 		renderClosePending(root, data.close_requested_by, data.close_requested_to, me);
+		initEscalation(root, caseId, data);
 		// Plaintext chrome renders immediately — it doesn't need the key.
 		const badge = root.querySelector('[data-wc-status-badge]');
 		if (badge) { badge.textContent = t('status_' + data.status, data.status); badge.className = 'wc-status wc-status-' + data.status; }
 		const assignSel = root.querySelector('[data-wc-assign]');
 		if (assignSel) assignSel.value = data.assigned_to || '';
+		bindMetaActions(root, data, me);
+
+		// Locked-content note — rendered up front so an officer who never
+		// unlocks sees *why* the content area is empty, not a dead page.
+		// Removed again when decryption succeeds.
+		const lockNote = root.querySelector('[data-wc-locked-note]');
+		const hasBlob = !!storedKeyBlob(me);
+		const setLockNote = (text, linkOfficers) => {
+			if (!lockNote) return;
+			lockNote.textContent = text;
+			if (linkOfficers) {
+				lockNote.appendChild(document.createTextNode(' '));
+				const a = document.createElement('a');
+				a.href = base + '/officers';
+				a.textContent = t('nokey_link', 'Open key settings');
+				lockNote.appendChild(a);
+			}
+			lockNote.hidden = false;
+		};
+		if (!data.wrap || !hasBlob) {
+			setLockNote(
+				hasBlob
+					? t('err_nowrap', 'This case is not encrypted for your key — another officer must re-grant access.')
+					: t('nokey_hint', 'Your officer key is not on this device. Set it up on the Officers page to read cases.'),
+				!hasBlob);
+		} else {
+			setLockNote(t('case_locked_note', 'Case contents are locked — unlock your key above to read them.'), false);
+		}
 
 		const priv = await unlockPrivateKey();
-		if (!priv) {
-			toast('error', t('err_nokey', 'Unlock your key to read this case.'));
-			return;
-		}
+		if (!priv) return;
 		// No wrap row = the case was never granted to this officer's key
 		// (e.g. key rotated without re-wrap) — a grant problem, not a
 		// decryption failure.
-		if (!data.wrap) {
-			showError(t('err_nowrap', 'This case is not encrypted for your key — another officer must re-grant access.'));
-			return;
-		}
+		if (!data.wrap) return;
 		const pk = await pubKey(me);
 		const caseKey = pk ? await window.WcCrypto.openSealed(data.wrap, pk, priv) : null;
 		if (!caseKey) {
-			showError(t('err_decrypt', 'Decryption failed.'));
+			setLockNote(t('err_decrypt', 'Decryption failed.'), false);
 			return;
 		}
+		if (lockNote) lockNote.hidden = true;
 
 		if (data.title_cipher) {
 			const title = await window.WcCrypto.open(data.title_cipher, caseKey);
@@ -424,7 +481,8 @@
 			const btn = document.createElement('button');
 			btn.type = 'button';
 			btn.className = 'wc-attachment';
-			btn.textContent = '⬇ ' + name + ' (' + a.mime + ')';
+			btn.textContent = '⬇ ' + name;
+			btn.title = a.mime;
 			btn.addEventListener('click', async () => {
 				const bytes = await window.WcCrypto.openBytes(a.cipher, caseKey);
 				if (!bytes) { toast('error', t('err_decrypt', 'Decryption failed.')); return; }
@@ -444,7 +502,7 @@
 			root.querySelector('[data-wc-notes]').appendChild(renderMsg('note', plain, n.at, n.author));
 		}
 
-		bindCaseActions(root, data, caseKey);
+		bindCryptoActions(root, data, caseKey);
 	}
 
 	function renderMsg(dir, text, at, author) {
@@ -457,6 +515,91 @@
 		meta.textContent = (author ? author + ' · ' : '') + at;
 		li.appendChild(p); li.appendChild(meta);
 		return li;
+	}
+
+	/**
+	 * One-way escalation export (FC-WCHK-EXPORT). Officer-authored text only —
+	 * nothing from the decrypted case is read, copied, or prefilled here.
+	 * Hidden entirely when the TicketCheck facade probe fails.
+	 */
+	function initEscalation(root, caseId, data) {
+		const sec = root.querySelector('[data-wc-esc]');
+		if (!sec) return;
+		if (!data.escalate_available) { sec.hidden = true; return; }
+		sec.hidden = false;
+
+		const list = root.querySelector('[data-wc-esc-list]');
+		const renderList = (items) => {
+			list.replaceChildren();
+			if (!items || items.length === 0) {
+				const li = document.createElement('li');
+				li.className = 'wc-esc-empty';
+				li.textContent = t('esc_none', 'No escalations yet.');
+				list.append(li);
+				return;
+			}
+			for (const e of items) {
+				const li = document.createElement('li');
+				li.className = 'wc-esc-item';
+				const num = document.createElement('strong');
+				num.textContent = e.ticket_number;
+				const meta = document.createElement('span');
+				meta.className = 'wc-esc-meta';
+				meta.textContent = ' ' + t('esc_by', 'by') + ' ' + e.officer_uid + ' · ' + e.created_at;
+				li.append(num, meta);
+				list.append(li);
+			}
+		};
+		renderList(data.escalations || []);
+
+		const toggle = root.querySelector('[data-wc-esc-toggle]');
+		const form = root.querySelector('[data-wc-esc-form]');
+		// Escalation is officer-authored metadata — it does not need the case
+		// key. initCase blanket-disables form submits until decryption; undo
+		// that here so exporting works even while the case stays locked.
+		const escSubmit = form.querySelector('[type=submit]');
+		if (escSubmit) escSubmit.disabled = false;
+		let idemKey = null;
+		// One key per form-open: a retry or double-submit replays the same
+		// export server-side instead of minting a second ticket.
+		toggle.addEventListener('click', () => {
+			const opening = form.hidden;
+			form.hidden = !opening;
+			toggle.setAttribute('aria-expanded', String(opening));
+			if (opening) {
+				idemKey = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random());
+				form.querySelector('[name=title]').focus();
+			}
+		});
+		form.addEventListener('submit', async (ev) => {
+			ev.preventDefault();
+			const btn = form.querySelector('[type=submit]');
+			btn.disabled = true;
+			try {
+				const res = await api('/api/cases/' + caseId + '/escalate', {
+					method: 'POST',
+					body: {
+						title: form.elements.title.value,
+						description: form.elements.description.value,
+						category: form.elements.category.value,
+						priority: form.elements.priority.value,
+						idemKey: idemKey,
+					},
+				});
+				toast(res.replayed ? 'success' : 'success',
+					res.replayed ? t('esc_replayed', 'This export was already sent.') : t('esc_created', 'Ticket created.'));
+				data.escalations = [res.escalation].concat(data.escalations || []);
+				renderList(data.escalations);
+				form.reset();
+				form.hidden = true;
+				toggle.setAttribute('aria-expanded', 'false');
+				idemKey = null;
+			} catch (e) {
+				toast('error', (e.payload && e.payload.message) || t('err_generic', 'Something went wrong. Please try again.'));
+			} finally {
+				btn.disabled = false;
+			}
+		});
 	}
 
 	function renderClosePending(root, by, to, me) {
@@ -472,13 +615,89 @@
 			raw.replace('{t}', label).replace('{by}', by);
 	}
 
-	function bindCaseActions(root, data, caseKey) {
+	/**
+	 * Metadata actions — status, assign, legal hold. None of these need the
+	 * case key, so they must work even while the content stays locked.
+	 * Revision is shared via root.dataset (crypto actions read it too).
+	 */
+	function bindMetaActions(root, data, me) {
+		const refreshRev = (d) => { root.dataset.revision = d.revision; };
+		const revision = () => parseInt(root.dataset.revision || '0', 10);
+
+		root.querySelectorAll('[data-wc-status], [data-wc-assign], [data-wc-hold-form] [type=submit]').forEach((el) => { el.disabled = false; });
+
+		root.querySelectorAll('[data-wc-status]').forEach((btn) => {
+			btn.addEventListener('click', async () => {
+				if (btn.disabled) return;
+				btn.disabled = true;
+				try {
+					const res = await api('/api/cases/' + data.id + '/status', { method: 'PUT', body: { status: btn.dataset.wcStatus, revision: revision() } });
+					refreshRev(res);
+					const badge = root.querySelector('[data-wc-status-badge]');
+					if (badge) { badge.textContent = t('status_' + res.status, res.status); badge.className = 'wc-status wc-status-' + res.status; }
+					renderClosePending(root, res.close_requested_by, res.close_requested_to, me);
+					toast('success', res.close_requested_by ? t('close_pending_toast', 'Request recorded — a second officer must confirm.') : t('status_saved', 'Status updated.'));
+				} catch (e) {
+					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
+					else toast('error', e.message);
+				} finally {
+					btn.disabled = false;
+				}
+			});
+		});
+
+		const holdForm = root.querySelector('[data-wc-hold-form]');
+		if (holdForm) {
+			holdForm.addEventListener('submit', async (ev) => {
+				ev.preventDefault();
+				const btn = holdForm.querySelector('[type=submit]');
+				if (btn) btn.disabled = true;
+				try {
+					const hold = holdForm.querySelector('[name=hold]').checked;
+					const reason = holdForm.querySelector('[name=reason]').value;
+					const res = await api('/api/cases/' + data.id + '/hold', { method: 'PUT', body: { hold, reason, revision: revision() } });
+					refreshRev(res);
+					toast('success', t('hold_saved', 'Saved.'));
+				} catch (e) {
+					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
+					else toast('error', e.message);
+				} finally {
+					if (btn) btn.disabled = false;
+				}
+			});
+		}
+
+		const assignSel = root.querySelector('[data-wc-assign]');
+		if (assignSel) {
+			let lastAssigned = data.assigned_to || '';
+			assignSel.addEventListener('change', async () => {
+				assignSel.disabled = true;
+				try {
+					const res = await api('/api/cases/' + data.id + '/assign', { method: 'PUT', body: { uid: assignSel.value || null, revision: revision() } });
+					refreshRev(res);
+					lastAssigned = assignSel.value;
+					toast('success', t('assigned', 'Assignment saved.'));
+				} catch (e) {
+					assignSel.value = lastAssigned;
+					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
+					else toast('error', e.message);
+				} finally {
+					assignSel.disabled = false;
+				}
+			});
+		}
+	}
+
+	/**
+	 * Crypto-bound actions — reply, internal note, re-grant. These need the
+	 * decrypted case key; they only exist after a successful unlock.
+	 */
+	function bindCryptoActions(root, data, caseKey) {
 		const me = boot().wcUid;
-		let revision = data.revision;
-		const refreshRev = (d) => { revision = d.revision; root.dataset.revision = revision; };
-		// initCase disabled all action controls until this point — handlers
-		// are being wired now, so everything can go live.
-		root.querySelectorAll('form [type=submit], [data-wc-status], [data-wc-assign]').forEach((el) => { el.disabled = false; });
+		const refreshRev = (d) => { root.dataset.revision = d.revision; };
+		const revision = () => parseInt(root.dataset.revision || '0', 10);
+		// Decryption succeeded — content forms go live.
+		root.querySelectorAll('form [type=submit]').forEach((el) => { el.disabled = false; });
 
 		const replyForm = root.querySelector('[data-wc-reply-form]');
 		if (replyForm) {
@@ -490,7 +709,7 @@
 				btn.disabled = true;
 				try {
 					const cipher = await window.WcCrypto.seal(text, caseKey);
-					const res = await api('/api/cases/' + data.id + '/messages', { method: 'POST', body: { cipher, revision } });
+					const res = await api('/api/cases/' + data.id + '/messages', { method: 'POST', body: { cipher, revision: revision() } });
 					refreshRev(res);
 					replyForm.querySelector('[name=body]').value = '';
 					root.querySelector('[data-wc-messages]').appendChild(renderMsg('officer', text, new Date().toISOString(), me));
@@ -576,67 +795,6 @@
 				grantList.appendChild(li);
 			}
 			if (grantList.children.length > 0) grantSec.hidden = false;
-		}
-
-		root.querySelectorAll('[data-wc-status]').forEach((btn) => {
-			btn.addEventListener('click', async () => {
-				if (btn.disabled) return;
-				btn.disabled = true;
-				try {
-					const res = await api('/api/cases/' + data.id + '/status', { method: 'PUT', body: { status: btn.dataset.wcStatus, revision } });
-					refreshRev(res);
-					const badge = root.querySelector('[data-wc-status-badge]');
-					if (badge) { badge.textContent = t('status_' + res.status, res.status); badge.className = 'wc-status wc-status-' + res.status; }
-					renderClosePending(root, res.close_requested_by, res.close_requested_to, me);
-					toast('success', res.close_requested_by ? t('close_pending_toast', 'Request recorded — a second officer must confirm.') : t('status_saved', 'Status updated.'));
-				} catch (e) {
-					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
-					else toast('error', e.message);
-				} finally {
-					btn.disabled = false;
-				}
-			});
-		});
-
-		const holdForm = root.querySelector('[data-wc-hold-form]');
-		if (holdForm) {
-			holdForm.addEventListener('submit', async (ev) => {
-				ev.preventDefault();
-				const btn = holdForm.querySelector('[type=submit]');
-				if (btn) btn.disabled = true;
-				try {
-					const hold = holdForm.querySelector('[name=hold]').checked;
-					const reason = holdForm.querySelector('[name=reason]').value;
-					const res = await api('/api/cases/' + data.id + '/hold', { method: 'PUT', body: { hold, reason, revision } });
-					refreshRev(res);
-					toast('success', t('hold_saved', 'Saved.'));
-				} catch (e) {
-					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
-					else toast('error', e.message);
-				} finally {
-					if (btn) btn.disabled = false;
-				}
-			});
-		}
-
-		const assignSel = root.querySelector('[data-wc-assign]');
-		if (assignSel) {
-			let lastAssigned = data.assigned_to || '';
-			assignSel.addEventListener('change', async () => {
-				assignSel.disabled = true;
-				try {
-					const res = await api('/api/cases/' + data.id + '/assign', { method: 'PUT', body: { uid: assignSel.value || null, revision } });
-					refreshRev(res);
-					lastAssigned = assignSel.value;
-					toast('success', t('assigned', 'Assignment saved.'));
-				} catch (e) {
-					assignSel.value = lastAssigned;
-					if (e.status === 409) { toast('error', t('err_conflict', 'Changed elsewhere — reloading.')); location.reload(); }
-					else toast('error', e.message);
-				} finally {
-					assignSel.disabled = false;
-				}
-			});
 		}
 	}
 
@@ -982,6 +1140,7 @@
 	// ── devices + verbal ─────────────────────────────────────────────────
 
 	function initCompanion(root) {
+		const me = boot().wcUid;
 		const form = root.querySelector('[data-wc-pair-form]');
 		if (!form) return;
 		const tokenPanel = root.querySelector('[data-wc-token-panel]');
@@ -993,14 +1152,27 @@
 			if (btn) btn.disabled = true;
 			try {
 				const res = await api('/api/devices', { method: 'POST', body: { name } });
+				// One-shot pairing payload: app base URL + bearer token + the
+				// passphrase-WRAPPED private key (ciphertext — safe to carry;
+				// the officer's passphrase is still required on the device).
+				// Shown once; only sha256(token) persists server-side.
+				const payload = { u: location.origin + base, t: res.token };
+				const blob = storedKeyBlob(me);
+				if (blob) payload.k = blob;
+				const pairStr = 'wchk-pair:' + btoa(JSON.stringify(payload))
+					.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 				const out = root.querySelector('[data-wc-token]');
-				out.textContent = res.token; // shown once, never stored server-side
+				out.textContent = pairStr;
 				if (tokenPanel) {
 					tokenPanel.hidden = false;
 					const copyBtn = tokenPanel.querySelector('[data-wc-copy-token]');
-					if (copyBtn) copyBtn.onclick = () => copyText(res.token).then(
+					if (copyBtn) copyBtn.onclick = () => copyText(pairStr).then(
 						() => toast('success', t('copied', 'Copied.')),
 						() => toast('error', t('err_copy', 'Copy failed — select and copy the token manually.')));
+					renderQr(tokenPanel.querySelector('[data-wc-pair-qr]'), pairStr);
+					if (!blob) {
+						toast('error', t('pair_no_key', 'Your key is not on this device — the app can pair but cannot decrypt cases until the key is transferred.'));
+					}
 				}
 				form.reset();
 			} catch (e) {

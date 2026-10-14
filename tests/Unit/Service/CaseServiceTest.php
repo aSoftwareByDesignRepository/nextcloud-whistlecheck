@@ -41,6 +41,8 @@ final class CaseServiceTest extends TestCase
 	private IdemKeyMapper&MockObject $idem;
 	private \OCP\IDBConnection&MockObject $db;
 	private WmessageMapper&MockObject $messages;
+	private IConfig&MockObject $sysConfig;
+	private string $instanceSecret = 'test-instance-secret';
 	private bool $casFails = false;
 	private CaseService $svc;
 
@@ -61,6 +63,9 @@ final class CaseServiceTest extends TestCase
 		$this->cases->method('updateWithRevision')->willReturnCallback(
 			fn (Wcase $c, int $rev) => $this->casFails ? 0 : ($c->setRevision($rev + 1) ?? 1));
 		$this->messages = $this->createMock(WmessageMapper::class);
+		$this->sysConfig = $this->createMock(IConfig::class);
+		$this->sysConfig->method('getSystemValueString')
+			->willReturnCallback(fn (string $k, string $d = '') => $k === 'secret' ? $this->instanceSecret : $d);
 
 		$this->svc = new CaseService(
 			$this->cases,
@@ -80,7 +85,7 @@ final class CaseServiceTest extends TestCase
 			new SanitizeService(),
 			$this->db,
 			$this->users,
-			$this->createMock(IConfig::class),
+			$this->sysConfig,
 			$this->createMock(\OCA\WhistleCheck\Db\CaseKeyWrapMapper::class),
 		);
 	}
@@ -224,7 +229,7 @@ final class CaseServiceTest extends TestCase
 			new SanitizeService(),
 			$this->db,
 			$this->users,
-			$this->createMock(IConfig::class),
+			$this->sysConfig,
 			$this->createMock(\OCA\WhistleCheck\Db\CaseKeyWrapMapper::class),
 		);
 		$this->config->method('getInt')->willReturn(36);
@@ -553,6 +558,192 @@ final class CaseServiceTest extends TestCase
 		$this->cases->method('findByHint')->willReturn($case);
 		$view = $this->svc->openByHint(str_repeat('a', 64), $verifier);
 		$this->assertSame(Wcase::STATUS_RECEIVED, $view['status']);
+	}
+
+	// --- receipt_cipher validation ----------------------------------------
+
+	private function submitPayload(EnvelopeService $env, array $extra = []): array
+	{
+		return array_merge([
+			'ikey' => 'receipt-key-123456',
+			'hint' => str_repeat('a', 64),
+			'verifier' => str_repeat('b', 64),
+			'code_salt' => str_repeat('c', 32),
+			'key_salt' => str_repeat('d', 32),
+			'reporter_wrap' => $env->seal('k', $env->randomKey()),
+			'body' => $env->seal('b', $env->randomKey()),
+			'wraps' => [['uid' => 'o1', 'wrap' => $env->seal('w', $env->randomKey())]],
+		], $extra);
+	}
+
+	public function testSubmitRejectsInvalidReceiptCipher(): void
+	{
+		$env = new EnvelopeService();
+		$this->cases->expects($this->never())->method('insert');
+		try {
+			$this->svc->submit(
+				$this->submitPayload($env, ['receipt_cipher' => 'not-an-envelope']), true);
+			$this->fail('expected ValidationException');
+		} catch (ValidationException $e) {
+			$this->assertArrayHasKey('body', $e->getFields());
+		}
+	}
+
+	public function testSubmitStoresClientReceiptCipher(): void
+	{
+		$env = new EnvelopeService();
+		$receipt = $env->seal('receipt-text', $env->randomKey());
+		$this->cases->method('insert')->willReturnCallback(function (Wcase $c) {
+			$c->setId(1);
+			return $c;
+		});
+		$inserted = [];
+		$this->messages->method('insert')->willReturnCallback(function ($m) use (&$inserted) {
+			$inserted[] = $m;
+			return $m;
+		});
+		$this->svc->submit(
+			$this->submitPayload($env, ['receipt_cipher' => $receipt]), true);
+		$this->assertCount(2, $inserted); // report body + automatic receipt
+		$this->assertSame('officer', $inserted[1]->getDirection());
+		$this->assertSame($receipt, $inserted[1]->getCipher());
+	}
+
+	public function testSubmitReceiptFallsBackToBodyCipher(): void
+	{
+		$env = new EnvelopeService();
+		$body = $env->seal('the-report', $env->randomKey());
+		$this->cases->method('insert')->willReturnCallback(function (Wcase $c) {
+			$c->setId(1);
+			return $c;
+		});
+		$inserted = [];
+		$this->messages->method('insert')->willReturnCallback(function ($m) use (&$inserted) {
+			$inserted[] = $m;
+			return $m;
+		});
+		$this->svc->submit($this->submitPayload($env, ['body' => $body]), true);
+		$this->assertSame($body, $inserted[1]->getCipher());
+	}
+
+	// --- reporter reply idempotency ----------------------------------------
+
+	private function verifiedCase(string $verifier): Wcase
+	{
+		$case = $this->case(Wcase::STATUS_IN_REVIEW, 1);
+		$case->setId(9);
+		$case->setCodeHash(hash('sha256', $verifier));
+		return $case;
+	}
+
+	public function testReporterReplyReplayReturnsCaseWithoutAppending(): void
+	{
+		// ikey already recorded → replay-safe early return: no message insert,
+		// no hint lookup, no transaction.
+		$existing = new IdemKey();
+		$existing->setCaseId(9);
+		$this->idem->method('findByKey')->willReturn($existing);
+		$this->cases->expects($this->never())->method('findByHint');
+		$this->messages->expects($this->never())->method('insert');
+		$env = new EnvelopeService();
+		$out = $this->svc->replyAsReporterByHint(
+			str_repeat('a', 64), str_repeat('b', 64),
+			$env->seal('m', $env->randomKey()), 'draft-key-123');
+		$this->assertSame(9, $out);
+	}
+
+	public function testReporterReplyAppendsWithIkeyMarker(): void
+	{
+		$env = new EnvelopeService();
+		$verifier = str_repeat('b', 64);
+		$this->cases->method('findByHint')->willReturn($this->verifiedCase($verifier));
+		$seenKeys = [];
+		$this->idem->method('insert')->willReturnCallback(function (IdemKey $k) use (&$seenKeys) {
+			$seenKeys[] = $k->getIkey();
+			return $k;
+		});
+		$this->messages->expects($this->once())->method('insert');
+		$this->db->expects($this->once())->method('commit');
+		$out = $this->svc->replyAsReporterByHint(
+			str_repeat('a', 64), $verifier, $env->seal('m', $env->randomKey()), 'draft-abc-456');
+		$this->assertSame(9, $out);
+		$this->assertSame(['reply-draft-abc-456'], $seenKeys); // namespaced marker
+	}
+
+	public function testReporterReplyUniqueViolationReturnsWinner(): void
+	{
+		// Two racing identical retries: loser hits the unique index inside the
+		// tx, rolls back, re-reads, and returns the winner's case id.
+		$env = new EnvelopeService();
+		$verifier = str_repeat('b', 64);
+		$this->cases->method('findByHint')->willReturn($this->verifiedCase($verifier));
+		$winner = new IdemKey();
+		$winner->setCaseId(9);
+		$this->idem->method('findByKey')->willReturnOnConsecutiveCalls(null, $winner);
+		$this->idem->method('insert')->willThrowException(new \OCP\DB\Exception('dup', 0, null));
+		$this->messages->expects($this->never())->method('insert');
+		$this->db->expects($this->once())->method('rollBack');
+		$out = $this->svc->replyAsReporterByHint(
+			str_repeat('a', 64), $verifier, $env->seal('m', $env->randomKey()), 'draft-race-1');
+		$this->assertSame(9, $out);
+	}
+
+	public function testReporterReplyRejectsMalformedIkey(): void
+	{
+		$env = new EnvelopeService();
+		$this->cases->expects($this->never())->method('findByHint');
+		try {
+			$this->svc->replyAsReporterByHint(
+				str_repeat('a', 64), str_repeat('b', 64),
+				$env->seal('m', $env->randomKey()), 'short');
+			$this->fail('expected ValidationException');
+		} catch (ValidationException $e) {
+			$this->assertArrayHasKey('ikey', $e->getFields());
+		}
+	}
+
+	public function testReporterReplyWithoutIkeyStillWorks(): void
+	{
+		// Backwards compatibility: callers without an ikey take the plain
+		// reply path (single tx inside reply()).
+		$env = new EnvelopeService();
+		$verifier = str_repeat('b', 64);
+		$case = $this->verifiedCase($verifier);
+		$this->cases->method('findByHint')->willReturn($case);
+		$this->cases->method('find')->willReturn($case); // reply() re-reads by id
+		$this->idem->expects($this->never())->method('findByKey');
+		$this->messages->expects($this->once())->method('insert');
+		$out = $this->svc->replyAsReporterByHint(
+			str_repeat('a', 64), $verifier, $env->seal('m', $env->randomKey()));
+		$this->assertSame(9, $out);
+	}
+
+	// --- paramsByHint anti-enumeration ------------------------------------
+
+	public function testParamsByHintUnknownCaseReturnsDeterministicFakeSalts(): void
+	{
+		$this->cases->method('findByHint')->willReturn(null);
+		$hint = str_repeat('ab', 32);
+		$a = $this->svc->paramsByHint($hint);
+		$b = $this->svc->paramsByHint($hint);
+		$this->assertSame($a, $b);
+		$this->assertSame(32, strlen($a['salt']));
+		$this->assertSame(32, strlen($a['key_salt']));
+		$this->assertNotSame($a['salt'], $a['key_salt']);
+		// A different instance secret must produce different fake salts —
+		// otherwise the pseudo-salt leaks which hints are unclaimed.
+		$this->instanceSecret = 'other-secret';
+		$this->assertNotSame($a, $this->svc->paramsByHint($hint));
+	}
+
+	public function testParamsByHintFailsClosedWithoutInstanceSecret(): void
+	{
+		// An empty `secret` must hard-fail: a publicly known fallback makes
+		// fake salts computable → paramsByHint becomes an existence oracle.
+		$this->cases->method('findByHint')->willReturn(null);
+		$this->instanceSecret = '';
+		$this->expectException(\RuntimeException::class);
+		$this->svc->paramsByHint(str_repeat('ab', 32));
 	}
 
 }

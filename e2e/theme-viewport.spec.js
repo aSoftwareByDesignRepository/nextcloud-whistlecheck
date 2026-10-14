@@ -119,6 +119,56 @@ test.describe('dark theme (fresh fixture, real user setting)', () => {
 	})
 })
 
+test.describe('NC high-contrast themes (real user setting)', () => {
+	// The auditor toggles these in theming settings — they are real theme
+	// ids shipped by the theming app, not media emulation.
+	for (const themeId of ['highcontrast', 'dark-highcontrast']) {
+		test.describe(`theme: ${themeId}`, () => {
+			let officer
+			test.beforeAll(() => {
+				officer = provisionOfficer()
+				setUserTheme(officer.uid, `["${themeId}"]`)
+			})
+			test.afterAll(() => deprovisionOfficer(officer?.uid))
+
+			test(`officer inbox passes axe AA under ${themeId}`, async ({ page }) => {
+				await login(page, { username: officer.uid, password: officer.password })
+				await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
+				await expect(page.locator('.wc-loading')).toBeHidden({ timeout: 20000 })
+				const axe = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze()
+				expect(axe.violations, `${themeId} axe: ${JSON.stringify(axe.violations.map((v) => v.id))}`).toEqual([])
+			})
+		})
+	}
+})
+
+test.describe('RTL direction', () => {
+	let officer
+	test.beforeAll(() => { officer = provisionOfficer() })
+	test.afterAll(() => deprovisionOfficer(officer?.uid))
+
+	test('drawer hides off-canvas to the right under dir=rtl', async ({ page }) => {
+		await login(page, { username: officer.uid, password: officer.password })
+		await page.setViewportSize({ width: 390, height: 844 })
+		await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
+		await expect(page.locator('.wc-loading')).toBeHidden({ timeout: 20000 })
+		// NC carries direction on <body dir=…>, not <html> — flip the same
+		// element the server template does for RTL locales.
+		await page.evaluate(() => { document.body.dir = 'rtl' })
+		await page.waitForTimeout(250) // let mobile-nav re-evaluate
+		// Closed drawer must sit fully off the right edge, not slide into view.
+		const rect = await page.locator('#app-navigation').boundingBox()
+		expect(rect, 'nav must be measurable').toBeTruthy()
+		expect(rect.x, 'closed RTL drawer must start beyond the right edge')
+			.toBeGreaterThanOrEqual(390 - 2)
+		// Toggle still opens it into view.
+		await page.click('#wc-nav-toggle')
+		await page.waitForTimeout(300)
+		const open = await page.locator('#app-navigation').boundingBox()
+		expect(open.x + open.width, 'open RTL drawer must be in view').toBeLessThanOrEqual(390)
+	})
+})
+
 test.describe('contrast modes (emulated media)', () => {
 	test('forced-colors: panels regain borders, controls operable, axe clean', async ({ page }) => {
 		await page.emulateMedia({ forcedColors: 'active' })

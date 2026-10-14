@@ -39,7 +39,7 @@ final class AuditServiceTest extends TestCase
 
 	public function testRecordDropsNonWhitelistedPayloadKeys(): void
 	{
-		$this->mapper->method('findLast')->willReturn(null);
+		$this->mapper->method('findLastForUpdate')->willReturn(null);
 		$this->mapper->expects($this->once())->method('insert')->with($this->callback(function (AuditEvent $e) {
 			$payload = json_decode((string)$e->getPayloadJson(), true);
 			$this->assertSame(['status' => 'received'], $payload);
@@ -56,7 +56,7 @@ final class AuditServiceTest extends TestCase
 
 	public function testRecordDropsNonScalarValues(): void
 	{
-		$this->mapper->method('findLast')->willReturn(null);
+		$this->mapper->method('findLastForUpdate')->willReturn(null);
 		$this->mapper->expects($this->once())->method('insert')->with($this->callback(function (AuditEvent $e) {
 			$this->assertNull($e->getPayloadJson()); // only non-scalar passed → payload stays null
 			return true;
@@ -66,7 +66,7 @@ final class AuditServiceTest extends TestCase
 
 	public function testFirstEventChainsToGenesis(): void
 	{
-		$this->mapper->method('findLast')->willReturn(null);
+		$this->mapper->method('findLastForUpdate')->willReturn(null);
 		$this->mapper->expects($this->once())->method('insert')->with($this->callback(function (AuditEvent $e) {
 			$this->assertSame(1, $e->getSeq());
 			$this->assertSame('wchk-genesis', $e->getPrevHash());
@@ -79,7 +79,7 @@ final class AuditServiceTest extends TestCase
 	public function testSubsequentEventChainsPrevHash(): void
 	{
 		$prev = $this->event(1, str_repeat('aa', 32), 'wchk-genesis');
-		$this->mapper->method('findLast')->willReturn($prev);
+		$this->mapper->method('findLastForUpdate')->willReturn($prev);
 		$this->mapper->expects($this->once())->method('insert')->with($this->callback(function (AuditEvent $e) use ($prev) {
 			$this->assertSame(2, $e->getSeq());
 			$this->assertSame($prev->getHash(), $e->getPrevHash());

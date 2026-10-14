@@ -2,18 +2,11 @@
 /** @var \OCP\IL10N $l */
 declare(strict_types=1);
 $_['wc_nav_current'] = 'cases';
+$_['wc_page'] = 'inbox';
+$_['wc_page_title'] = $l->t('Case inbox');
+$_['wc_page_help'] = $l->t('End-to-end encrypted reports from anonymous reporters.');
+include __DIR__ . '/common/page-start.php';
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>"
-	data-wc-page="inbox"
-	data-wc-uid="<?php p($_['wc_uid'] ?? ''); ?>"
-	data-wc-officers="<?php p(json_encode($_['officers'] ?? [])); ?>">
-	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>
-	<div class="wc-app-wrap" id="wc-main">
-		<header class="wc-app-header">
-			<h1><?php p($l->t('Case inbox')); ?></h1>
-			<?php include __DIR__ . '/parts/nav.php'; ?>
-		</header>
-
 		<section class="wc-panel wc-unlock" data-wc-unlock hidden
 			aria-labelledby="wc-unlock-heading">
 			<h2 id="wc-unlock-heading"><?php p($l->t('Unlock your key')); ?></h2>
@@ -44,5 +37,4 @@ $_['wc_nav_current'] = 'cases';
 			</table>
 		</div>
 		<p class="wc-hint" data-wc-truncated hidden><?php p($l->t('Showing the 500 most recent cases.')); ?></p>
-	</div>
-</div>
+<?php include __DIR__ . '/common/page-end.php'; ?>

@@ -28,7 +28,7 @@ $fields = $_['fields'] ?? [];
 			<div class="wc-field">
 				<label for="wc-code"><?php p($l->t('Case code')); ?></label>
 				<input id="wc-code" name="code" type="text" required autocomplete="off" spellcheck="false"
-					inputmode="latin" autocapitalize="characters" maxlength="31" value="<?php p($_['code'] ?? ''); ?>"
+					inputmode="text" autocapitalize="characters" maxlength="31" value="<?php p($_['code'] ?? ''); ?>"
 					aria-describedby="wc-code-hint" aria-invalid="<?php p(!empty($_['error']) ? 'true' : 'false'); ?>">
 				<p id="wc-code-hint" class="wc-hint"><?php p($l->t('The 26-character code shown after your report, e.g. XXXXX-XXXXX-…')); ?></p>
 			</div>
@@ -40,6 +40,7 @@ $fields = $_['fields'] ?? [];
 			<p><?php p($l->t('Status:')); ?> <strong class="wc-status"></strong>
 			 · <?php p($l->t('Feedback due:')); ?> <span class="wc-due"></span></p>
 			<ul class="wc-messages"></ul>
+			<p class="wc-hint" data-wc-readonly-note role="note" hidden><?php p($l->t('This case is closed. The procedure has ended.')); ?></p>
 			<form id="wc-reply-form" hidden>
 				<div class="wc-field">
 					<label for="wc-reply-body"><?php p($l->t('Reply')); ?></label>

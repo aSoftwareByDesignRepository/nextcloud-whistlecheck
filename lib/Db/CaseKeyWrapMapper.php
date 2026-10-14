@@ -35,6 +35,28 @@ class CaseKeyWrapMapper extends QBMapper
 		}
 	}
 
+	/**
+	 * Batch wrap lookup for inbox surfaces — one query instead of N.
+	 *
+	 * @param list<int> $caseIds
+	 * @return array<int, CaseKeyWrap> caseId => wrap
+	 */
+	public function findForCasesAndOfficer(array $caseIds, string $uid): array
+	{
+		if ($caseIds === []) {
+			return [];
+		}
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())
+			->where($qb->expr()->in('case_id', $qb->createNamedParameter($caseIds, IQueryBuilder::PARAM_INT_ARRAY)))
+			->andWhere($qb->expr()->eq('officer_uid', $qb->createNamedParameter($uid)));
+		$out = [];
+		foreach ($this->findEntities($qb) as $wrap) {
+			$out[$wrap->getCaseId()] = $wrap;
+		}
+		return $out;
+	}
+
 	/** @return list<CaseKeyWrap> */
 	public function findForCase(int $caseId): array
 	{

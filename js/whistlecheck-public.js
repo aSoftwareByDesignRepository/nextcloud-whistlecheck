@@ -49,6 +49,25 @@
 		return wraps;
 	}
 
+	/**
+	 * Busy-state for slow actions (argon2id + PoW can take seconds): swap the
+	 * button label for progress text, mark aria-busy, restore on settle.
+	 */
+	function setBusy(btn, busyText) {
+		if (!btn || btn.dataset.wcBusy) return () => {};
+		const original = btn.textContent;
+		btn.dataset.wcBusy = '1';
+		btn.disabled = true;
+		btn.setAttribute('aria-busy', 'true');
+		btn.textContent = busyText;
+		return () => {
+			delete btn.dataset.wcBusy;
+			btn.disabled = false;
+			btn.removeAttribute('aria-busy');
+			btn.textContent = original;
+		};
+	}
+
 	function showError(msg, fields) {
 		const box = document.getElementById('wc-form-error');
 		if (box) {
@@ -145,7 +164,7 @@
 		}
 
 		const btn = form.querySelector('[type=submit]');
-		btn.disabled = true;
+		const unbusy = setBusy(btn, t('sending', 'Sending…'));
 		try {
 			const genBytes = crypto.getRandomValues(new Uint8Array(16));
 			const codeCanonical = C.encode(genBytes);
@@ -222,7 +241,7 @@
 		} catch (e) {
 			showError(t('err_generic', 'Something went wrong. Please try again.'));
 		} finally {
-			btn.disabled = false;
+			unbusy();
 		}
 	}
 
@@ -237,6 +256,40 @@
 		done.focus();
 	}
 
+	// QR renders on demand only — never drawn eagerly, so the code is not
+	// machine-scannable until the reporter explicitly asks (shoulder-surf
+	// protection on an anonymity-critical screen).
+	function toggleQr(btn) {
+		const panel = document.getElementById('wc-code-panel');
+		const wrap = panel && panel.querySelector('[data-wc-qr-wrap]');
+		const canvas = panel && panel.querySelector('[data-wc-qr]');
+		const codeEl = panel && panel.querySelector('.wc-code-value');
+		if (!wrap || !canvas || !codeEl || !codeEl.textContent) return;
+		if (!wrap.hidden) {
+			wrap.hidden = true;
+			btn.textContent = t('show_qr', 'Show QR code');
+			return;
+		}
+		if (!window.qrcode) return;
+		const q = window.qrcode(0, 'M');
+		q.addData(codeEl.textContent.replace(/[^A-Za-z0-9]/g, ''));
+		q.make();
+		const count = q.getModuleCount();
+		const size = 232, cell = Math.floor(size / (count + 8)), off = Math.floor((size - cell * count) / 2);
+		canvas.width = canvas.height = size;
+		const ctx = canvas.getContext('2d');
+		ctx.fillStyle = '#fff';
+		ctx.fillRect(0, 0, size, size);
+		ctx.fillStyle = '#000';
+		for (let r = 0; r < count; r++) {
+			for (let c = 0; c < count; c++) {
+				if (q.isDark(r, c)) ctx.fillRect(off + c * cell, off + r * cell, cell, cell);
+			}
+		}
+		wrap.hidden = false;
+		btn.textContent = t('hide_qr', 'Hide QR code');
+	}
+
 	// ── follow-up flow ───────────────────────────────────────────────────
 
 	async function followFlow(form) {
@@ -249,7 +302,7 @@
 			return;
 		}
 		const btn = form.querySelector('[type=submit]');
-		btn.disabled = true;
+		const unbusy = setBusy(btn, t('opening', 'Opening…'));
 		try {
 			// Zero-knowledge: the raw code NEVER leaves the client — the server
 			// only gets its sha256 lookup hint (NN-09).
@@ -280,7 +333,7 @@
 		} catch (e) {
 			showError(t('err_generic', 'Something went wrong. Please try again.'));
 		} finally {
-			btn.disabled = false;
+			unbusy();
 		}
 	}
 
@@ -312,17 +365,29 @@
 		panel.focus();
 
 		const replyForm = document.getElementById('wc-reply-form');
+		const readonlyNote = panel.querySelector('[data-wc-readonly-note]');
+		if (view.readonly) {
+			// Archived case — explain why there is no reply box (parity
+			// with the no-JS thread page, which shows the same note).
+			if (readonlyNote) readonlyNote.hidden = false;
+		}
 		if (replyForm && !view.readonly) {
 			replyForm.hidden = false;
+			// Per-draft idempotency key: a failed send retried unchanged is
+			// deduped server-side; typing a new draft mints a new key.
+			let replyIkey = crypto.randomUUID();
+			replyForm.querySelector('[name=body]').addEventListener('input', () => {
+				replyIkey = crypto.randomUUID();
+			});
 			replyForm.addEventListener('submit', async (ev) => {
 				ev.preventDefault();
 				const btn = replyForm.querySelector('[type=submit]');
 				const text = replyForm.querySelector('[name=body]').value.trim();
 				if (!text) return;
-				btn.disabled = true;
+				const unbusy = setBusy(btn, t('sending', 'Sending…'));
 				try {
 					const cipher = await C.seal(text, caseKey);
-					const res = await api('/api/public/case/reply', { hint, verifier, cipher });
+					const res = await api('/api/public/case/reply', { hint, verifier, cipher, ikey: replyIkey });
 					const json = await safeJson(res);
 					if (res.ok && json && json.success) {
 						replyForm.querySelector('[name=body]').value = '';
@@ -339,7 +404,7 @@
 					// Network/crypto failure — the user must see it, not a silent hang.
 					showError(t('err_generic', 'Something went wrong.'));
 				} finally {
-					btn.disabled = false;
+					unbusy();
 				}
 			}, { once: false });
 		}
@@ -392,6 +457,10 @@
 		if (codeInput) bindCodeInput(codeInput);
 		const copyBtn = document.querySelector('[data-wc-copy-code]');
 		if (copyBtn) copyBtn.addEventListener('click', () => copyCode(copyBtn));
+		const qrBtn = document.querySelector('[data-wc-show-qr]');
+		if (qrBtn) qrBtn.addEventListener('click', () => toggleQr(qrBtn));
+		const printBtn = document.querySelector('[data-wc-print-code]');
+		if (printBtn) printBtn.addEventListener('click', () => window.print());
 		const e2eCapable = !!(window.sodium && window.crypto && window.crypto.randomUUID);
 
 		// Honesty: JS + libsodium present → E2E badge; else the no-JS form

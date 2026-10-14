@@ -46,7 +46,7 @@ function restore(string $source, string $backup): void
 $suiteFilters = [
 	'CaseCodeServiceTest', 'EnvelopeServiceTest', 'DeadlineServiceTest',
 	'SanitizeServiceTest', 'CaseServiceTest', 'AuditServiceTest',
-	'RateLimitServiceTest', 'PowServiceTest',
+	'RateLimitServiceTest', 'PowServiceTest', 'EscalationServiceTest',
 ];
 
 echo "== baseline whistlecheck unit tests ==\n";
@@ -122,6 +122,13 @@ $mutations = [
 		'filters' => ['CaseServiceTest'],
 	],
 	[
+		'name' => 'instance_secret_fallback',
+		'file' => 'lib/Service/CaseService.php',
+		'from' => "if (\$s === '') {",
+		'to' => "if (false && \$s === '') {",
+		'filters' => ['CaseServiceTest'],
+	],
+	[
 		'name' => 'transition_map_bypassed',
 		'file' => 'lib/Service/CaseService.php',
 		'from' => "if (!in_array(\$to, self::TRANSITIONS[\$from] ?? [], true)) {",
@@ -176,6 +183,60 @@ $mutations = [
 		'from' => '$hits = $this->mapper->hit($bucket, $kind, $expires);',
 		'to' => '$hits = 0;',
 		'filters' => ['RateLimitServiceTest'],
+	],
+	[
+		'name' => 'esc_idem_replay_skipped',
+		'file' => 'lib/Service/EscalationService.php',
+		'from' => 'if ($idemKey !== \'\') {
+			$existing = $this->escalations->findByIdemKey($caseId, $idemKey);',
+		'to' => 'if (false && $idemKey !== \'\') {
+			$existing = $this->escalations->findByIdemKey($caseId, $idemKey);',
+		'filters' => ['EscalationServiceTest'],
+	],
+	[
+		'name' => 'esc_cap_boundary_off',
+		'file' => 'lib/Service/EscalationService.php',
+		'from' => 'if ($this->escalations->countForCase($caseId) >= self::MAX_PER_CASE) {',
+		'to' => 'if ($this->escalations->countForCase($caseId) > self::MAX_PER_CASE) {',
+		'filters' => ['EscalationServiceTest'],
+	],
+	[
+		'name' => 'esc_probe_skipped',
+		'file' => 'lib/Service/EscalationService.php',
+		'from' => 'if (!$this->probe->escalationTargetUsable()) {',
+		'to' => 'if (false && !$this->probe->escalationTargetUsable()) {',
+		'filters' => ['EscalationServiceTest'],
+	],
+	[
+		'name' => 'esc_untracked_audit_dropped',
+		'file' => 'lib/Service/EscalationService.php',
+		'from' => '\'outcome\' => \'untracked\',',
+		'to' => '\'outcome\' => \'tracked\',',
+		'filters' => ['EscalationServiceTest'],
+	],
+	[
+		'name' => 'esc_success_audit_dropped',
+		'file' => 'lib/Service/EscalationService.php',
+		'from' => '		$this->audit->record(\'case.escalated\', $officerUid, $caseId, [
+			\'to\' => SiblingFacadeContracts::TICKET_CHECK_APP,
+			\'key\' => $ticketNumber,
+		]);',
+		'to' => '		// audit intentionally skipped',
+		'filters' => ['EscalationServiceTest'],
+	],
+	[
+		'name' => 'esc_title_check_weakened',
+		'file' => 'lib/Service/EscalationService.php',
+		'from' => 'if ($title === \'\' || mb_strlen($title) > self::MAX_TITLE_LEN) {',
+		'to' => 'if ($title === \'__never__\' || mb_strlen($title) > self::MAX_TITLE_LEN) {',
+		'filters' => ['EscalationServiceTest'],
+	],
+	[
+		'name' => 'esc_facade_validation_not_mapped',
+		'file' => 'lib/Service/EscalationService.php',
+		'from' => 'if ($code === \'validation_failed\') {',
+		'to' => 'if (false && $code === \'validation_failed\') {',
+		'filters' => ['EscalationServiceTest'],
 	],
 ];
 

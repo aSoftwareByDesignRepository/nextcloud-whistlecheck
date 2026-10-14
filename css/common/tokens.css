@@ -1,0 +1,123 @@
+/*
+ * WhistleCheck design tokens (--wc-*).
+ * Canonical Check-apps scale (ArbeitszeitCheck wins); colours derive from
+ * Nextcloud theme variables. No raw hex in feature CSS.
+ *
+ * Spacing/typography/breakpoints on :root.
+ * Theme-bound surfaces on body + themed app surfaces (.wc-app / .wc-toasts)
+ * so re-bound --color-* values resolve correctly on every theme switch.
+ */
+:root {
+	--wc-space-1: 4px;
+	--wc-space-2: 8px;
+	--wc-space-3: 12px;
+	--wc-space-4: 16px;
+	--wc-space-5: 24px;
+	--wc-space-6: 32px;
+	--wc-space-7: 48px;
+	--wc-space-8: 64px;
+
+	--wc-radius-sm: 6px;
+	--wc-radius-md: 12px;
+	--wc-radius-lg: 16px;
+
+	--wc-fs-xs: 0.75rem;
+	--wc-fs-sm: 0.875rem;
+	--wc-fs-md: 1rem;
+	--wc-fs-lg: 1.125rem;
+	--wc-fs-xl: 1.5rem;
+	--wc-fs-2xl: 1.875rem;
+
+	--wc-line-tight: 1.2;
+	--wc-line-base: 1.45;
+
+	--wc-breakpoint-sm: 480px;
+	--wc-breakpoint-md: 768px;
+	--wc-breakpoint-lg: 1024px;
+
+	--wc-icon-sm: 1rem;
+	--wc-icon-md: 1.125rem;
+	--wc-icon-lg: 1.375rem;
+	--wc-icon-well: 2.25rem;
+	--wc-icon-stroke: 2;
+
+	--wc-tab-num: tabular-nums;
+}
+
+/*
+ * Theme-dependent tokens MUST resolve where Nextcloud sets --color-* (body /
+ * [data-theme-*]) and on themed app surfaces. Resolving color-mix only on
+ * :root can fall back to light surfaces while text inherits dark-theme ink.
+ */
+body,
+#app-content.wc-app,
+.wc-app,
+.wc-toasts {
+	--wc-overlay-top: var(--header-height, 50px);
+	--wc-overlay-height: calc(100dvh - var(--header-height, 50px));
+
+	--wc-shadow-sm: 0 1px 2px color-mix(in srgb, var(--color-main-text) 8%, transparent);
+	--wc-shadow-md: 0 8px 24px color-mix(in srgb, var(--color-main-text) 12%, transparent);
+
+	--wc-bg-soft: color-mix(in srgb, var(--color-main-background) 96%, var(--color-main-text) 4%);
+	--wc-bg-card: var(--color-main-background);
+	--wc-border: color-mix(in srgb, var(--color-main-text) 12%, transparent);
+	--wc-border-strong: color-mix(in srgb, var(--color-main-text) 24%, transparent);
+	/* Interactive controls need >=3:1 (WCAG 1.4.11): maxcontrast is NC's own
+	   input border; --color-border / --wc-border stay surface-only. */
+	--wc-form-border: var(--color-border-maxcontrast, var(--wc-border-strong));
+	--wc-muted: var(--color-text-maxcontrast);
+	--wc-text: var(--color-main-text);
+
+	/*
+	 * Mix INTO main-background (not transparent) so tints stay visible on every
+	 * Nextcloud theme, including high-contrast and custom accent branding.
+	 */
+	--wc-tint-success: color-mix(in srgb, var(--color-success-text, var(--color-success)) 18%, var(--color-main-background));
+	--wc-tint-warning: color-mix(in srgb, var(--color-warning-text, var(--color-warning)) 22%, var(--color-main-background));
+	--wc-tint-danger: color-mix(in srgb, var(--color-error-text, var(--color-error)) 18%, var(--color-main-background));
+	--wc-tint-info: color-mix(in srgb, var(--color-primary-element) 16%, var(--color-main-background));
+
+	/* Solid danger CTA fill — --color-error is a pale TINT in NC 30+, never a
+	   button fill (WCAG 1.4.3). Dark themes brighten element-error; on-fill ink
+	   stays AA via the dark mix below. */
+	--wc-danger-fill: var(--color-element-error, var(--color-error-text, var(--color-error)));
+	--wc-danger-ink: var(--color-error-text, var(--color-error));
+
+	/* Overlay scrims (drawer backdrops) — theme ink, never #000 */
+	--wc-scrim: color-mix(in srgb, var(--color-main-text) 45%, transparent);
+
+	color: var(--color-main-text);
+}
+
+/* Dark themes brighten --color-element-error into a light accent; white on it
+ * fails AA — darken the solid fill toward the background so on-fill ink stays
+ * >= 4.5:1 (DESIGN-SYSTEM §3.1). */
+body[data-theme-dark],
+body.theme--dark {
+	--wc-danger-fill: color-mix(in srgb, var(--color-element-error, var(--color-error-text)) 72%, var(--color-main-background));
+}
+
+@media (prefers-contrast: more) {
+	:root {
+		--wc-icon-stroke: 2.25;
+	}
+
+	body,
+	#app-content.wc-app,
+	.wc-app,
+	.wc-toasts {
+		--wc-border: color-mix(in srgb, var(--color-main-text) 28%, transparent);
+		--wc-border-strong: color-mix(in srgb, var(--color-main-text) 40%, transparent);
+		--wc-shadow-sm: 0 0 0 1px var(--wc-border-strong);
+		--wc-shadow-md: 0 0 0 1px var(--wc-border-strong);
+	}
+}
+
+/* Aliases for ergonomic refs. */
+body {
+	--wc-bg: var(--wc-bg-card);
+	--wc-primary: var(--color-primary-element);
+	--wc-radius-pill: var(--border-radius-pill, 999px);
+	--wc-touch: 44px;
+}

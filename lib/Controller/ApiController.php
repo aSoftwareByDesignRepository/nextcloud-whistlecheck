@@ -72,6 +72,7 @@ class ApiController extends Controller
 		private readonly CompanionService $companion,
 		private readonly VerbalChannelService $verbal,
 		private readonly EnvelopeService $envelope,
+		private readonly \OCA\WhistleCheck\Service\EscalationService $escalations,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -114,9 +115,14 @@ class ApiController extends Controller
 			$today = $this->deadlines->today();
 			$rows = $this->caseMapper->listInbox(501);
 			$truncated = count($rows) > 500;
+			$rows = array_slice($rows, 0, 500);
+			$wrapsByCase = $this->wrapMapper->findForCasesAndOfficer(
+				array_map(fn ($c) => (int)$c->getId(), $rows),
+				$uid
+			);
 			$out = [];
-			foreach (array_slice($rows, 0, 500) as $case) {
-				$wrap = $this->wrapMapper->findForCaseAndOfficer($case->getId(), $uid);
+			foreach ($rows as $case) {
+				$wrap = $wrapsByCase[$case->getId()] ?? null;
 				if ($wrap === null) {
 					continue; // US-007 AC-2: pre-grant cases are invisible, not "locked"
 				}
@@ -130,10 +136,10 @@ class ApiController extends Controller
 					'days_until_due' => $case->daysUntilDue($today),
 					'legal_hold' => $case->getLegalHold() === 1,
 					'close_requested_by' => $case->getCloseRequestedBy(),
-				'close_requested_to' => $case->getCloseRequestedTo(),
+					'close_requested_to' => $case->getCloseRequestedTo(),
 					'category_id' => $case->getCategoryId(),
 					// Officer's wrapped content key — they decrypt client-side.
-					'wrap' => $wrap?->getWrappedKey(),
+					'wrap' => $wrap->getWrappedKey(),
 					'title_cipher' => $case->getTitleCipher(),
 				];
 			}
@@ -161,6 +167,8 @@ class ApiController extends Controller
 			$this->audit->record('case_opened', $uid, $id, []);
 			$data = $this->cases->officerView($case, $uid);
 			$data['wrap'] = $wrap->getWrappedKey();
+			$data['escalate_available'] = $this->escalations->targetUsable();
+			$data['escalations'] = $this->escalations->listForCase($id);
 			return $this->ok($data);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -334,6 +342,47 @@ class ApiController extends Controller
 			$this->noteMapper->delete($note);
 			$this->audit->record('note_deleted', $uid, $id, []);
 			return $this->ok([]);
+		} catch (\Throwable $e) {
+			return $this->fromThrowable($e);
+		}
+	}
+
+	#[NoAdminRequired]
+	public function escalations(int $id): JSONResponse
+	{
+		try {
+			$uid = $this->officerGuard();
+			if ($this->caseForOfficer($id, $uid) === null) {
+				return $this->notFound();
+			}
+			return $this->ok([
+				'available' => $this->escalations->targetUsable(),
+				'escalations' => $this->escalations->listForCase($id),
+			]);
+		} catch (\Throwable $e) {
+			return $this->fromThrowable($e);
+		}
+	}
+
+	#[NoAdminRequired]
+	public function escalate(int $id): JSONResponse
+	{
+		try {
+			$uid = $this->officerGuard();
+			if ($this->caseForOfficer($id, $uid) === null) {
+				return $this->notFound();
+			}
+			// Only officer-authored text crosses the boundary — params map
+			// straight onto the export DTO, uid comes from the guard, and no
+			// case field is ever forwarded (FC-WCHK-EXPORT).
+			$result = $this->escalations->create($id, $uid, [
+				'title' => $this->request->getParam('title'),
+				'description' => $this->request->getParam('description'),
+				'category' => $this->request->getParam('category'),
+				'priority' => $this->request->getParam('priority'),
+				'idemKey' => $this->request->getParam('idemKey'),
+			]);
+			return $this->ok($result, $result['replayed'] ? 200 : 201);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
 		}
@@ -614,16 +663,35 @@ class ApiController extends Controller
 	public function auditList(int $caseId = 0): JSONResponse
 	{
 		try {
-			$this->officerGuard();
+			$uid = $this->officerGuard();
+			// Per-case audit is wrap-gated like every other case surface —
+			// otherwise a wrap-less officer could confirm existence and read
+			// lifecycle events for cases they must not see (NN-04 oracle).
+			if ($caseId > 0 && $this->caseForOfficer($caseId, $uid) === null) {
+				return $this->notFound();
+			}
 			$rows = $caseId > 0 ? $this->auditMapper->findForCase($caseId) : $this->auditMapper->findRecent(500);
-			$out = array_map(static fn ($e) => [
-				'seq' => $e->getSeq(),
-				'event' => $e->getEventType(),
-				'actor' => $e->getActorUid(),
-				'case_id' => $e->getCaseId(),
-				'payload' => $e->getPayloadJson() !== null ? json_decode($e->getPayloadJson(), true) : null,
-				'at' => $e->getCreatedAt()->format(\DateTime::ATOM),
-			], $rows);
+			// The global feed must not leak invisible case ids — events whose
+			// case the officer cannot read are filtered out entirely. Chain
+			// verification (verifyChain) still walks the complete chain.
+			$visible = [];
+			foreach ($this->wrapMapper->findForOfficer($uid) as $w) {
+				$visible[(int)$w->getCaseId()] = true;
+			}
+			$out = [];
+			foreach ($rows as $e) {
+				if ($e->getCaseId() !== null && !isset($visible[$e->getCaseId()])) {
+					continue;
+				}
+				$out[] = [
+					'seq' => $e->getSeq(),
+					'event' => $e->getEventType(),
+					'actor' => $e->getActorUid(),
+					'case_id' => $e->getCaseId(),
+					'payload' => $e->getPayloadJson() !== null ? json_decode($e->getPayloadJson(), true) : null,
+					'at' => $e->getCreatedAt()->format(\DateTime::ATOM),
+				];
+			}
 			return $this->ok(['events' => $out, 'chain_ok' => $this->audit->verifyChain() === -1]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);

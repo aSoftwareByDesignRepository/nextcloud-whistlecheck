@@ -161,14 +161,24 @@ class OfficerKeyService
 		if ((!$inGroup) && ($target === null || $target->getStatus() === Officer::STATUS_REVOKED)) {
 			throw new DomainException('not_found', 'Not found', 404);
 		}
-		if ($target !== null && $target->getStatus() !== Officer::STATUS_REVOKED) {
-			$now = new \DateTime('now', new \DateTimeZone('UTC'));
-			$target->setStatus(Officer::STATUS_REVOKED);
-			$target->setRevokedAt($now);
-			$target->setRevokedBy($actorUid);
-			$this->officers->update($target);
+		// Revoked + de-wrapped in one commit — a split failure must never
+		// leave a "revoked" officer with live wraps (still decrypts) or a
+		// de-wrapped officer still marked active (access without reads).
+		$this->db->beginTransaction();
+		try {
+			if ($target !== null && $target->getStatus() !== Officer::STATUS_REVOKED) {
+				$now = new \DateTime('now', new \DateTimeZone('UTC'));
+				$target->setStatus(Officer::STATUS_REVOKED);
+				$target->setRevokedAt($now);
+				$target->setRevokedBy($actorUid);
+				$this->officers->update($target);
+			}
+			$this->wraps->deleteForOfficer($targetUid);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
 		}
-		$this->wraps->deleteForOfficer($targetUid);
 		// Eject from the officer group — `isOfficer` is the group's only gate,
 		// so without this a revoked officer keeps full API access and could
 		// even re-register a key to revive themselves.

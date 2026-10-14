@@ -296,4 +296,42 @@ final class OfficerKeyServiceTest extends TestCase
 		$this->expectException(DomainException::class);
 		$this->svc->revoke('nobody', 'admin');
 	}
+
+	public function testRevokeRollsBackWhenWrapDeleteFails(): void
+	{
+		// mark-revoked + delete-wraps must be one commit: a mid-flight failure
+		// must never leave a "revoked" row with live wraps.
+		$target = $this->activeOfficer('vic');
+		$this->officers->method('findByUid')->willReturn($target);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$this->users->method('get')->willReturn($this->createMock(IUser::class));
+		$this->group->method('inGroup')->willReturn(true);
+		$this->wraps->method('deleteForOfficer')
+			->willThrowException(new \RuntimeException('db gone'));
+		$this->db->expects($this->once())->method('rollBack');
+		$this->db->expects($this->never())->method('commit');
+		try {
+			$this->svc->revoke('vic', 'admin');
+			$this->fail('expected the failure to propagate');
+		} catch (\RuntimeException $e) {
+			$this->assertSame('db gone', $e->getMessage());
+		}
+	}
+
+	public function testRevokeCommitsMarkAndWrapDeleteTogether(): void
+	{
+		$target = $this->activeOfficer('vic');
+		$this->officers->method('findByUid')->willReturn($target);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$this->users->method('get')->willReturn($this->createMock(IUser::class));
+		$this->group->method('inGroup')->willReturn(true);
+		$this->officers->expects($this->once())->method('update')
+			->with($this->callback(
+				fn (Officer $o) => $o->getStatus() === Officer::STATUS_REVOKED
+					&& $o->getRevokedBy() === 'admin'));
+		$this->wraps->expects($this->once())->method('deleteForOfficer')->with('vic');
+		$this->db->expects($this->once())->method('beginTransaction');
+		$this->db->expects($this->once())->method('commit');
+		$this->svc->revoke('vic', 'admin');
+	}
 }

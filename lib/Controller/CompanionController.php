@@ -48,6 +48,7 @@ class CompanionController extends Controller
 		private readonly CaseService $cases,
 		private readonly DeadlineService $deadlines,
 		private readonly RateLimitService $rate,
+		private readonly \OCA\WhistleCheck\Service\EscalationService $escalations,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -108,9 +109,14 @@ class CompanionController extends Controller
 			$today = $this->deadlines->today();
 			$rows = $this->caseMapper->listInbox(501);
 			$truncated = count($rows) > 500;
+			$rows = array_slice($rows, 0, 500);
+			$wrapsByCase = $this->wrapMapper->findForCasesAndOfficer(
+				array_map(fn ($c) => (int)$c->getId(), $rows),
+				$uid
+			);
 			$out = [];
-			foreach (array_slice($rows, 0, 500) as $case) {
-				$wrap = $this->wrapMapper->findForCaseAndOfficer($case->getId(), $uid);
+			foreach ($rows as $case) {
+				$wrap = $wrapsByCase[$case->getId()] ?? null;
 				if ($wrap === null) {
 					continue;
 				}
@@ -144,7 +150,34 @@ class CompanionController extends Controller
 			}
 			$data = $this->cases->officerView($case, $uid);
 			$data['wrap'] = $wrap->getWrappedKey();
+			$data['escalate_available'] = $this->escalations->targetUsable();
+			$data['escalations'] = $this->escalations->listForCase($id);
 			return $this->ok($data);
+		} catch (\Throwable $e) {
+			return $this->fromThrowable($e);
+		}
+	}
+
+	#[PublicPage]
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function escalate(int $id): JSONResponse
+	{
+		try {
+			[$uid] = $this->deviceAuth();
+			if ($this->wrapMapper->findForCaseAndOfficer($id, $uid) === null) {
+				return $this->notFound();
+			}
+			// Same one-way export as the web endpoint — only officer-authored
+			// text crosses; uid comes from the device token, never the body.
+			$result = $this->escalations->create($id, $uid, [
+				'title' => $this->request->getParam('title'),
+				'description' => $this->request->getParam('description'),
+				'category' => $this->request->getParam('category'),
+				'priority' => $this->request->getParam('priority'),
+				'idemKey' => $this->request->getParam('idemKey'),
+			]);
+			return $this->ok($result, $result['replayed'] ? 200 : 201);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
 		}

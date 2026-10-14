@@ -57,7 +57,7 @@
 	min-height: 48px;
 	font: inherit;
 	padding: 10px 12px;
-	border: 2px solid var(--color-border-dark, var(--color-border));
+	border: 2px solid var(--color-border-maxcontrast, var(--color-border-dark));
 	border-radius: var(--border-radius-element);
 	background: var(--color-main-background);
 	color: var(--color-main-text);
@@ -129,7 +129,7 @@
 .wc-public .wc-btn-primary:hover { background: var(--color-primary-element-hover); }
 .wc-public .wc-btn-secondary {
 	background: transparent;
-	border: 2px solid var(--color-border-dark, var(--color-border));
+	border: 2px solid var(--color-border-maxcontrast, var(--color-border-dark));
 	color: var(--color-main-text);
 }
 .wc-public .wc-btn-secondary:hover { background: var(--color-background-hover); }
@@ -226,4 +226,36 @@
 	.wc-code-panel, .wc-msg {
 		border-color: var(--color-main-text);
 	}
+}
+
+/* ── Case-code keep-safe affordances: QR + print ── */
+
+.wc-qr-wrap {
+	margin: 12px 0 4px;
+	text-align: center;
+}
+/* QR needs a fixed light quiet zone to stay scannable under every theme —
+ * this is the one intentional raw-white surface (ISO/IEC 18004 quiet zone). */
+.wc-qr {
+	border: 8px solid #fff;
+	outline: 1px solid var(--color-border-dark);
+	border-radius: var(--border-radius-small);
+	background: #fff;
+	max-width: 232px;
+	height: auto;
+}
+.wc-code-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+/* Print: only the case code page content — never the form behind it. */
+@media print {
+	.wc-public-main > *:not(.wc-code-panel):not(main > .wc-code-panel) { display: none !important; }
+	#wc-report-form, .wc-public-header, .wc-skip, #wc-form-error, .wc-welcome { display: none !important; }
+	.wc-code-panel { display: block !important; border: none; box-shadow: none; }
+	.wc-code-panel [data-wc-qr-wrap][hidden] { display: none !important; }
+	.wc-code-actions, .wc-code-panel .wc-btn-secondary, .wc-code-panel a { display: none !important; }
+	.wc-code-value { font-size: 20pt; }
 }

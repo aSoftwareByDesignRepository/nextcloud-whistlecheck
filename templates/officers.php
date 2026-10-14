@@ -2,18 +2,11 @@
 /** @var \OCP\IL10N $l */
 declare(strict_types=1);
 $_['wc_nav_current'] = 'officers';
+$_['wc_page'] = 'officers';
+$_['wc_page_title'] = $l->t('Case officers');
+$_['wc_page_help'] = $l->t('Manage officer keys and access to encrypted cases.');
+include __DIR__ . '/common/page-start.php';
 ?>
-<div id="app-content" class="wc-app" data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>"
-	data-wc-page="officers"
-	data-wc-uid="<?php p($_['wc_uid'] ?? ''); ?>"
-	data-wc-officers="<?php p(json_encode($_['officers'] ?? [])); ?>">
-	<a class="wc-skip-link" href="#wc-main"><?php p($l->t('Skip to content')); ?></a>
-	<div class="wc-app-wrap" id="wc-main">
-		<header class="wc-app-header">
-			<h1><?php p($l->t('Case officers')); ?></h1>
-			<?php include __DIR__ . '/parts/nav.php'; ?>
-		</header>
-
 		<section data-wc-keyreg class="wc-panel" aria-labelledby="wc-keyreg-heading">
 			<h2 id="wc-keyreg-heading" data-wc-keyreg-title><?php p($l->t('Set up your key')); ?></h2>
 			<p data-wc-keyreg-copy><?php p($l->t('Generate your encryption key. The private key stays in this browser, wrapped by your passphrase. The server only sees the public key. If you lose the passphrase and no other officer remains, case content is unrecoverable.')); ?></p>
@@ -47,5 +40,4 @@ $_['wc_nav_current'] = 'officers';
 				<tr><td colspan="5" class="wc-loading"><?php p($l->t('Loading…')); ?></td></tr>
 			</tbody>
 		</table>
-	</div>
-</div>
+<?php include __DIR__ . '/common/page-end.php'; ?>

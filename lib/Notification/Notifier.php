@@ -57,6 +57,8 @@ class Notifier implements INotifier
 				return $notification->setParsedSubject($l->t('Escalation: a case is overdue.'));
 			case 'wchk.retention_due':
 				return $notification->setParsedSubject($l->t('A case is past its retention period.'));
+			case 'wchk.retention_failed':
+				return $notification->setParsedSubject($l->t('The retention sweep failed repeatedly — please check the server logs.'));
 			default:
 				throw new \InvalidArgumentException('unknown subject');
 		}

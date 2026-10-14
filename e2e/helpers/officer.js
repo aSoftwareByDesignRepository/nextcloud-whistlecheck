@@ -1,17 +1,8 @@
 // @ts-check
-import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { occ, queryDbSafe } from './stack.js'
 
-const composeDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const GROUP = 'whistlecheck_officers'
-
-function docker(args) {
-	execFileSync('docker', ['compose', 'exec', '-T', ...args], {
-		cwd: composeDir, stdio: 'pipe', timeout: 60000,
-	})
-}
 
 /**
  * Provision a throwaway officer: fresh NC user + officer-group membership.
@@ -26,10 +17,8 @@ function docker(args) {
 export function provisionOfficer() {
 	const uid = 'wcj' + randomBytes(5).toString('hex')
 	const password = 'WcJourney-' + randomBytes(8).toString('hex')
-	docker(['-e', `OC_PASS=${password}`, '-u', 'www-data', 'nextcloud',
-		'php', 'occ', 'user:add', '--password-from-env', uid])
-	docker(['-u', 'www-data', 'nextcloud',
-		'php', 'occ', 'group:adduser', GROUP, uid])
+	occ(['user:add', '--password-from-env', uid], { OC_PASS: password })
+	occ(['group:adduser', GROUP, uid])
 	return { uid, password }
 }
 
@@ -39,17 +28,27 @@ export function provisionOfficer() {
  * user setting can.
  */
 export function setUserTheme(uid, themesJson) {
-	docker(['-u', 'www-data', 'nextcloud', 'php', 'occ',
-		'user:setting', uid, 'theming', 'enabled-themes', themesJson])
+	occ(['user:setting', uid, 'theming', 'enabled-themes', themesJson])
+}
+
+/** Set a core user setting (e.g. lang). */
+export function setUserSetting(uid, app, key, value) {
+	occ(['user:setting', uid, app, key, value])
+}
+
+/** Remove a uid from a group (no error if already absent). */
+export function removeFromGroup(group, uid) {
+	try {
+		occ(['group:removeuser', group, uid])
+	} catch { /* group/user may not exist */ }
 }
 
 /** Remove the throwaway user and its whistlecheck rows (no leftovers). */
 export function deprovisionOfficer(uid) {
 	try {
-		docker(['-u', 'www-data', 'nextcloud', 'php', 'occ', 'user:delete', uid])
+		occ(['user:delete', uid])
 	} catch { /* user may already be gone */ }
 	try {
-		docker(['mariadb', 'mariadb', '-unextcloud', '-pnextcloud_password', 'nextcloud',
-			'-e', `DELETE FROM oc_wchk_officers WHERE uid='${uid}'; DELETE FROM oc_wchk_case_keys WHERE officer_uid='${uid}';`])
+		queryDbSafe(`DELETE FROM oc_wchk_officers WHERE uid='${uid}'; DELETE FROM oc_wchk_case_keys WHERE officer_uid='${uid}';`)
 	} catch { /* best-effort cleanup */ }
 }

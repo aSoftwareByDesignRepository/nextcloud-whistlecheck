@@ -152,12 +152,12 @@ class PublicApiController extends Controller
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
-	public function caseReply(string $hint = '', string $verifier = '', string $cipher = ''): JSONResponse
+	public function caseReply(string $hint = '', string $verifier = '', string $cipher = '', string $ikey = ''): JSONResponse
 	{
 		try {
-			$powOk = $this->powProof('reply', $hint);
+			$powOk = $this->powProof('reply', $ikey !== '' ? $ikey : $hint);
 			$this->rate->check($this->ip(), 'reply', $powOk);
-			$caseId = $this->cases->replyAsReporterByHint($hint, $verifier, $cipher);
+			$caseId = $this->cases->replyAsReporterByHint($hint, $verifier, $cipher, $ikey !== '' ? $ikey : null);
 			return $this->ok(['case_id' => $caseId], 201);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);

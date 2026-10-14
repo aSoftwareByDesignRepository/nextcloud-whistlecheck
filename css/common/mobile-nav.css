@@ -1,0 +1,160 @@
+/**
+ * Mobile navigation drawer + in-page Menu button (<1024px).
+ * Hides broken/absent core #app-navigation-toggle.
+ * Drawer opens via .wc-nav--open; JS portals to body while open.
+ */
+
+@media (width < 1024px) {
+	#content.app-whistlecheck #app-navigation-toggle {
+		display: none !important;
+		visibility: hidden !important;
+		pointer-events: none !important;
+	}
+}
+
+/* In-page menu control (page-start.php) — beat NC core button height */
+#content.app-whistlecheck .wc-nav-toggle,
+.wc-nav-toggle {
+	display: none;
+	box-sizing: border-box;
+	align-items: center;
+	justify-content: center;
+	gap: var(--wc-space-2, 0.5rem);
+	min-height: 44px;
+	height: auto;
+	min-width: 44px;
+	padding: 0.625rem var(--wc-space-3, 0.75rem);
+	margin: 0 0 var(--wc-space-3, 0.75rem);
+	border: 1px solid var(--wc-form-border, var(--wc-border));
+	border-radius: var(--wc-radius-sm, 8px);
+	background-color: var(--color-main-background);
+	color: var(--color-main-text);
+	font-family: inherit;
+	font-size: var(--wc-fs-sm, 0.875rem);
+	font-weight: 600;
+	line-height: 1.2;
+	cursor: pointer;
+	touch-action: manipulation;
+	flex-shrink: 0;
+	box-shadow: var(--wc-shadow-sm, 0 1px 2px color-mix(in srgb, var(--color-main-text, #000) 8%, transparent));
+}
+
+.wc-nav-toggle__icon {
+	display: inline-flex;
+	width: 1.25rem;
+	height: 1.25rem;
+	color: inherit;
+}
+
+.wc-nav-toggle__icon .wc-icon,
+.wc-nav-toggle__icon svg,
+.wc-nav-toggle__icon-svg {
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.wc-nav-toggle:hover {
+	background-color: var(--color-background-hover);
+	border-color: var(--color-primary-element);
+}
+
+.wc-nav-toggle:focus-visible {
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: 2px;
+}
+
+.wc-nav-toggle[aria-expanded='true'] {
+	background-color: var(--wc-tint-info, color-mix(
+		in srgb,
+		var(--color-primary-element, #0082c9) 12%,
+		var(--color-main-background)
+	));
+	border-color: var(--color-primary-element);
+}
+
+.wc-nav-backdrop {
+	display: none;
+	position: fixed;
+	inset: 0;
+	z-index: 1998;
+	background: var(--wc-scrim, color-mix(in srgb, var(--color-main-text, #000) 35%, transparent));
+	border: 0;
+	padding: 0;
+	margin: 0;
+	cursor: pointer;
+}
+
+body.wc-nav-open .wc-nav-backdrop {
+	display: block;
+}
+
+@media (width < 1024px) {
+	#content.app-whistlecheck .wc-nav-toggle,
+	.wc-nav-toggle {
+		display: inline-flex;
+		min-height: 44px;
+	}
+
+	#content.app-whistlecheck #app-navigation.wc-nav:not(.vue),
+	body > #app-navigation.wc-nav:not(.vue) {
+		position: fixed !important;
+		top: var(--header-height, 50px) !important;
+		inset-inline-start: 0;
+		width: min(18rem, 88vw) !important;
+		max-width: 88vw;
+		height: var(--body-height, calc(100dvh - var(--header-height, 50px))) !important;
+		z-index: 1999;
+		transform: translateX(-105%) !important;
+		transition: transform 180ms ease;
+		box-shadow:
+			0 4px 16px color-mix(in srgb, var(--color-main-text, #000) 18%, transparent),
+			0 0 0 1px var(--color-border);
+		overflow-x: hidden;
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+		background: var(--color-main-background);
+	}
+
+	#content.app-whistlecheck #app-navigation.wc-nav.wc-nav--open,
+	body > #app-navigation.wc-nav.wc-nav--open {
+		transform: translateX(0) !important;
+	}
+
+	/* RTL: the drawer anchors to inline-start (= right edge), so hiding it
+	 * needs the mirror transform — -105% would slide it INTO view. */
+	[dir='rtl'] #content.app-whistlecheck #app-navigation.wc-nav:not(.vue),
+	[dir='rtl'] body > #app-navigation.wc-nav:not(.vue) {
+		transform: translateX(105%) !important;
+	}
+	[dir='rtl'] #content.app-whistlecheck #app-navigation.wc-nav.wc-nav--open,
+	[dir='rtl'] body > #app-navigation.wc-nav.wc-nav--open {
+		transform: translateX(0) !important;
+	}
+
+	body.wc-nav-open {
+		overflow: hidden;
+	}
+}
+
+@media (min-width: 1024px) {
+	.wc-nav-toggle {
+		display: none !important;
+	}
+
+	.wc-nav-backdrop {
+		display: none !important;
+	}
+}
+
+@media (width < 1024px) and (forced-colors: active) {
+	.wc-nav-toggle {
+		border: 2px solid ButtonText;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#content.app-whistlecheck #app-navigation.wc-nav:not(.vue),
+	body > #app-navigation.wc-nav:not(.vue) {
+		transition: none;
+	}
+}

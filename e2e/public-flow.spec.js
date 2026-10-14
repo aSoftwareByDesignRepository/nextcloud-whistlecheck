@@ -2,13 +2,17 @@
 import { test, expect } from '@playwright/test'
 import { assertNotServerUpdater } from './helpers/auth.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
+import { ensureReporterTarget } from './helpers/public-target.js'
 
 /**
  * Anonymous reporter round-trip — the critical public flow, no login needed.
  * Real browser crypto: submit seals with libsodium, the case code is derived
  * client-side and the follow-up page decrypts the thread.
  */
-test.beforeAll(() => resetRateBuckets()) // fresh 'submit' bucket (5/h per IP)
+test.beforeAll(() => {
+	resetRateBuckets() // fresh 'submit' bucket (5/h per IP)
+	ensureReporterTarget() // fresh stacks (GA-6 PG) have no registered officer key yet
+})
 
 test.describe('public reporter flow', () => {
   test('submit → receive code → open thread → reply', async ({ page }) => {

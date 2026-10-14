@@ -222,6 +222,10 @@ class CaseService
 		if ($contactCipher !== '' && !$this->envelope->isValidEnvelope($contactCipher)) {
 			$fields['contact'] = 'invalid';
 		}
+		$receiptCipher = (string)($in['receipt_cipher'] ?? '');
+		if ($receiptCipher !== '' && !$this->envelope->isValidEnvelope($receiptCipher)) {
+			$fields['body'] = 'invalid submission';
+		}
 		if (!$this->envelope->isValidEnvelope($reporterWrap, EnvelopeService::ALG_SECRETBOX)) {
 			$fields['body'] = 'invalid submission';
 		}
@@ -297,7 +301,7 @@ class CaseService
 			$receipt = new Wmessage();
 			$receipt->setCaseId($case->getId());
 			$receipt->setDirection('officer');
-			$receipt->setCipher((string)($in['receipt_cipher'] ?? $bodyCipher));
+			$receipt->setCipher($receiptCipher !== '' ? $receiptCipher : $bodyCipher);
 			$receipt->setAuthorUid('system');
 			$receipt->setCreatedAt($now);
 			$this->messages->insert($receipt);
@@ -346,19 +350,58 @@ class CaseService
 
 	/**
 	 * JS path — hint + verifier only, raw code never transmitted.
+	 * `ikey` is the client's per-draft idempotency key: a retried/replayed
+	 * reply dedupes instead of double-posting.
 	 *
-	 * @throws DomainException
+	 * @throws DomainException|ValidationException
 	 */
-	public function replyAsReporterByHint(string $hint, string $verifierHex, string $cipher): int
+	public function replyAsReporterByHint(string $hint, string $verifierHex, string $cipher, ?string $ikey = null): int
 	{
 		if (!ctype_xdigit($hint) || strlen($hint) !== 64 || !ctype_xdigit($verifierHex)) {
 			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
+		}
+		$idemKey = null;
+		if ($ikey !== null) {
+			if (preg_match('/^[A-Za-z0-9\-_]{8,128}$/', $ikey) !== 1) {
+				throw new ValidationException('invalid', 'Invalid request', ['ikey' => 'invalid']);
+			}
+			$idemKey = 'reply-' . $ikey;
+			$seen = $this->idem->findByKey($idemKey);
+			if ($seen !== null) {
+				return (int)$seen->getCaseId();
+			}
 		}
 		$case = $this->cases->findByHint(strtolower($hint));
 		if ($case === null || !$this->codes->verify($verifierHex, strtolower($case->getCodeHash()))) {
 			throw new DomainException('invalid_or_expired', 'Invalid or expired', 401);
 		}
-		$this->reply($case->getId(), 'reporter', $cipher, null, null);
+		if ($idemKey === null) {
+			$this->reply($case->getId(), 'reporter', $cipher, null, null);
+			return $case->getId();
+		}
+		// Dedupe marker + message append in ONE real transaction — a racing
+		// identical retry either loses the ikey insert (unique violation → the
+		// winner's reply stands, we return its case) or commits both together.
+		$this->db->beginTransaction();
+		try {
+			$ik = new IdemKey();
+			$ik->setIkey($idemKey);
+			$ik->setCaseId($case->getId());
+			$ik->setCreatedAt(new \DateTime('now', new \DateTimeZone('UTC')));
+			$this->idem->insert($ik);
+			$this->replyInTx($case, 'reporter', $cipher, null);
+			$this->db->commit();
+		} catch (DbException $e) {
+			$this->db->rollBack();
+			$again = $this->idem->findByKey($idemKey);
+			if ($again !== null) {
+				return (int)$again->getCaseId();
+			}
+			throw new DomainException('submission_failed', 'Submission failed', 500);
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
 		return $case->getId();
 	}
 
@@ -399,30 +442,40 @@ class CaseService
 		// leave a committed message the caller was told failed (orphan bug).
 		$this->db->beginTransaction();
 		try {
-			$now = new \DateTime('now', new \DateTimeZone('UTC'));
-			$msg = new Wmessage();
-			$msg->setCaseId($caseId);
-			$msg->setDirection($direction);
-			$msg->setCipher($cipher);
-			$msg->setAuthorUid($authorUid);
-			$msg->setCreatedAt($now);
-			$this->messages->insert($msg);
-
-			// First officer reply satisfies the 3-month feedback clock (spec US-005).
-			if ($direction === 'officer' && $case->getFeedbackSentAt() === null) {
-				$case->setFeedbackSentAt($now);
-			}
-			if ($direction === 'officer' && $case->getStatus() === Wcase::STATUS_RECEIVED) {
-				$case->setStatus(Wcase::STATUS_IN_REVIEW);
-			}
-			$this->persist($case, $case->getRevision());
-			$this->audit->record('message_added', $authorUid, $caseId, ['direction' => $direction, 'message_id' => $msg->getId()]);
+			$this->replyInTx($case, $direction, $cipher, $authorUid);
 			$this->db->commit();
 		} catch (\Throwable $e) {
 			$this->db->rollBack();
 			throw $e;
 		}
 		return $case;
+	}
+
+	/**
+	 * The append half of reply() — runs inside the caller's transaction so
+	 * idempotency markers and the message commit or roll back together.
+	 */
+	private function replyInTx(Wcase $case, string $direction, string $cipher, ?string $authorUid): void
+	{
+		$caseId = $case->getId();
+		$now = new \DateTime('now', new \DateTimeZone('UTC'));
+		$msg = new Wmessage();
+		$msg->setCaseId($caseId);
+		$msg->setDirection($direction);
+		$msg->setCipher($cipher);
+		$msg->setAuthorUid($authorUid);
+		$msg->setCreatedAt($now);
+		$this->messages->insert($msg);
+
+		// First officer reply satisfies the 3-month feedback clock (spec US-005).
+		if ($direction === 'officer' && $case->getFeedbackSentAt() === null) {
+			$case->setFeedbackSentAt($now);
+		}
+		if ($direction === 'officer' && $case->getStatus() === Wcase::STATUS_RECEIVED) {
+			$case->setStatus(Wcase::STATUS_IN_REVIEW);
+		}
+		$this->persist($case, $case->getRevision());
+		$this->audit->record('message_added', $authorUid, $caseId, ['direction' => $direction, 'message_id' => $msg->getId()]);
 	}
 
 	/**
@@ -693,7 +746,13 @@ class CaseService
 
 	private function instanceSecret(): string
 	{
+		// Fail closed: with a known/public secret the fake salts become
+		// computable, turning paramsByHint into a case-existence oracle.
+		// `secret` is always set post-install; empty means a broken instance.
 		$s = $this->config0->getSystemValueString('secret', '');
-		return $s !== '' ? $s : 'wchk-fallback-secret';
+		if ($s === '') {
+			throw new \RuntimeException('instance secret missing');
+		}
+		return $s;
 	}
 }

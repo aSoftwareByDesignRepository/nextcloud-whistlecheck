@@ -39,6 +39,35 @@ class AuditEventMapper extends QBMapper
 		}
 	}
 
+	/**
+	 * Locking tail read — SELECT … FOR UPDATE takes the row lock until the
+	 * surrounding transaction commits. The advisory lock alone is not enough:
+	 * it is released at the end of record(), BEFORE the caller's transaction
+	 * commits, so a second appender could compute the same seq against the
+	 * uncommitted tail and die on the unique index (spurious failure) or —
+	 * without it — silently fork the chain.
+	 *
+	 * With FOR UPDATE the second writer blocks on the tail row until the
+	 * first transaction resolves, then reads the committed head — correct
+	 * seq, no abort, no fork. The named lock still guards the empty-table
+	 * genesis (no row to lock) and keeps non-transactional callers cheap.
+	 */
+	public function findLastForUpdate(): ?AuditEvent
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())
+			->orderBy('seq', 'DESC')
+			->setMaxResults(1);
+		$stmt = $this->db->executeQuery(
+			$qb->getSQL() . ' FOR UPDATE',
+			$qb->getParameters(),
+			$qb->getParameterTypes(),
+		);
+		$row = $stmt->fetch();
+		$stmt->closeCursor();
+		return $row === false ? null : $this->mapRowToEntity($row);
+	}
+
 	/** @return list<AuditEvent> */
 	public function findForCase(int $caseId, int $limit = 500): array
 	{
