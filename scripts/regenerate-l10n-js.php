@@ -1,3 +1,4 @@
+#!/usr/bin/env php
 <?php
 
 declare(strict_types=1);
@@ -7,15 +8,28 @@ declare(strict_types=1);
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * Regenerate l10n/<lang>.js OC.L10N.register bundles from the JSON catalogs.
+ * Delegates to the shared generator (2-arg register() — pluralForm stays in
+ * the .json for tooling; emitting it in .js is a CSP unsafe-eval risk and
+ * a hardcoded nplurals=2 is wrong for pl/fr/pt_BR anyway).
+ *
+ * Usage: php scripts/regenerate-l10n-js.php
  */
 
-$l10n = dirname(__DIR__) . '/l10n';
-foreach (glob("$l10n/*.json") ?: [] as $file) {
-	$lang = basename($file, '.json');
-	$data = json_decode((string)file_get_contents($file), true);
-	$out = "OC.L10N.register(\n\t\"whistlecheck\",\n\t"
-		. json_encode($data['translations'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
-		. ",\n\t\"nplurals=2; plural=(n != 1);\"\n);\n";
-	file_put_contents("$l10n/$lang.js", $out);
-	echo "$lang.js regenerated\n";
+$root = realpath(__DIR__ . '/../../..');
+if ($root === false) {
+	fwrite(STDERR, "Cannot resolve nextcloud root\n");
+	exit(1);
 }
+$l10n = __DIR__ . '/../l10n';
+$locales = [];
+foreach (glob($l10n . '/*.json') ?: [] as $file) {
+	$locales[] = basename($file, '.json');
+}
+if ($locales === []) {
+	fwrite(STDERR, "No l10n/*.json catalogs found\n");
+	exit(1);
+}
+$cmd = PHP_BINARY . ' ' . escapeshellarg($root . '/scripts/l10n/regenerate-l10n-js.php')
+	. ' --app=whistlecheck --locales=' . implode(',', $locales);
+passthru($cmd, $code);
+exit($code);

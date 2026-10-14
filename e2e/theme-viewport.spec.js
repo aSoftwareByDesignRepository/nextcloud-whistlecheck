@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { login, assertNotServerUpdater } from './helpers/auth.js'
 import { provisionOfficer, deprovisionOfficer, setUserTheme } from './helpers/officer.js'
+import { occ } from './helpers/stack.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
 
 /**
@@ -199,3 +200,44 @@ test.describe('contrast modes (emulated media)', () => {
 		expect(axe.violations, `contrast-more axe: ${JSON.stringify(axe.violations.map((v) => v.id))}`).toEqual([])
 	})
 })
+
+test.describe('theme accent reaches rendered pixels', () => {
+	// The pixel goldens pin layout shape but not color: this proves the
+	// --color-primary-element chain actually lands on rendered controls by
+	// setting a sentinel accent via the real theming config and reading the
+	// button's computed background. Restores the prior value after.
+	test('primary button renders the configured accent color', async ({ page }) => {
+		const SENTINEL = '#7a1fa2' // unambiguous purple — cannot collide with defaults
+		const sentinelRgb = 'rgb(122, 31, 162)'
+		let prior = ''
+		try { prior = occ(['config:app:get', 'theming', 'primary_color']).trim() } catch { prior = '' }
+		occ(['theming:config', 'primary_color', SENTINEL])
+		try {
+			// theming cache is request-scoped but APCu can lag — poll until the
+			// CSS var reflects the new value rather than sleeping a fixed time.
+			let bg = ''
+			for (let i = 0; i < 20; i++) {
+				await page.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
+				bg = await page.evaluate(() => {
+					const el = document.querySelector('.wc-btn-primary')
+					return el ? getComputedStyle(el).backgroundColor : ''
+				})
+				if (bg === sentinelRgb) break
+				await page.waitForTimeout(500)
+			}
+			expect(bg, 'accent token must reach the rendered primary button').toBe(sentinelRgb)
+			// And the text on it must follow the theme's contrast pair.
+			const fg = await page.evaluate(() => {
+				const el = document.querySelector('.wc-btn-primary')
+				return el ? getComputedStyle(el).color : ''
+			})
+			expect(fg, 'accent text color must be themed, not hardcoded').not.toBe('')
+		} finally {
+			// Empty-string set is rejected as an invalid color — --reset
+			// restores the stock default when no accent was configured.
+			if (prior === '') occ(['theming:config', 'primary_color', '--reset'])
+			else occ(['theming:config', 'primary_color', prior])
+		}
+	})
+})
+

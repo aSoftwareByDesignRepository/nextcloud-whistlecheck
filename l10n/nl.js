@@ -43,7 +43,7 @@ OC.L10N.register(
 	"Case" : "Melding",
 	"Case #" : "Melding nr. ",
 	"Case code" : "Meldingscode",
-	"Case contents are locked — unlock your key above to read them." : "De inhoud van de zaak is vergrendeld — ontgrendel hierboven je sleutel om te lezen.",
+	"Case contents are locked — unlock your key above to read them." : "De inhoud van de zaak is vergrendeld — ontgrendel hierboven uw sleutel om te lezen.",
 	"Case contents stay encrypted until you unlock your key with your passphrase." : "De inhoud van meldingen blijft versleuteld totdat u uw sleutel met uw wachtwoordzin ontgrendelt.",
 	"Case inbox" : "Postvak meldingen",
 	"Case officer" : "Zaakbehandelaar",
