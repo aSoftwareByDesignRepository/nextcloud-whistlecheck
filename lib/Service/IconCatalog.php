@@ -65,7 +65,6 @@ final class IconCatalog
 		'chevron-right' => '<path d="m9 18 6-6-6-6"/>',
 		'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
 		'arrow-left' => '<path d="M19 12H5M11 19l-7-7 7-7"/>',
-		'smartphone' => '<rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><path d="M12 18h.01"/>',
 		'external-link' => '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>',
 		'list' => '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
 	];

@@ -19,7 +19,6 @@ use OCA\WhistleCheck\Db\WmessageMapper;
 use OCA\WhistleCheck\Db\WnoteMapper;
 use OCA\WhistleCheck\Service\AuditService;
 use OCA\WhistleCheck\Service\CaseService;
-use OCA\WhistleCheck\Service\CompanionService;
 use OCA\WhistleCheck\Service\ConfigService;
 use OCA\WhistleCheck\Service\DeadlineService;
 use OCA\WhistleCheck\Service\EscalationService;
@@ -82,7 +81,6 @@ final class ApiControllerAuditTest extends TestCase
 			$this->createMock(StatsService::class),
 			$this->createMock(DeadlineService::class),
 			$this->createMock(EvidenceExportService::class),
-			$this->createMock(CompanionService::class),
 			$this->createMock(VerbalChannelService::class),
 			new EnvelopeService(),
 			$this->createMock(EscalationService::class),

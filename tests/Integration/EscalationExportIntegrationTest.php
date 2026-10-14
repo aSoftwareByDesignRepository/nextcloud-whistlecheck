@@ -35,7 +35,7 @@ final class EscalationExportIntegrationTest extends TestCase
 		$this->user = $users->get(self::UID) ?? $users->createUser(self::UID, 'xA9!' . bin2hex(random_bytes(8)));
 		self::assertNotNull($this->user);
 		// Clean session state — the test exercises the sessionless
-		// (companion-style) actor path through the facade.
+		// actor path through the facade.
 		\OC::$server->get(IUserSession::class)->setUser(null);
 	}
 

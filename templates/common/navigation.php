@@ -31,7 +31,7 @@ $navItems = [
 
 $settingsChildren = [];
 if ($navCurrent === 'settings') {
-	foreach (['channel', 'categories', 'attachments', 'retention', 'access', 'companion', 'support'] as $s) {
+	foreach (['channel', 'categories', 'attachments', 'retention', 'access', 'support'] as $s) {
 		$settingsChildren[] = [
 			'url' => $_['urlGenerator']->linkToRoute('whistlecheck.page.settings', ['section' => $s]),
 			'label' => $l->t(ucfirst($s)),

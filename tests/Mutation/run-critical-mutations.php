@@ -164,20 +164,6 @@ $mutations = [
 		'filters' => ['OfficerKeyServiceTest'],
 	],
 	[
-		'name' => 'device_cap_unchecked',
-		'file' => 'lib/Service/CompanionService.php',
-		'from' => 'if (count($devices) >= self::MAX_DEVICES) {',
-		'to' => 'if (false && count($devices) >= self::MAX_DEVICES) {',
-		'filters' => ['CompanionServiceTest'],
-	],
-	[
-		'name' => 'touch_throttle_dropped',
-		'file' => 'lib/Service/CompanionService.php',
-		'from' => 'if ($last !== null && strtotime($now) - strtotime((string)$last) < 60) {',
-		'to' => 'if (false && $last !== null && strtotime($now) - strtotime((string)$last) < 60) {',
-		'filters' => ['CompanionServiceTest'],
-	],
-	[
 		'name' => 'ratelimit_no_increment',
 		'file' => 'lib/Service/RateLimitService.php',
 		'from' => '$hits = $this->mapper->hit($bucket, $kind, $expires);',

@@ -12,8 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shared Check-app design system: sidebar navigation shell with icon catalog,
   breadcrumbs, page headers, settings sub-navigation and mobile drawer —
   consistent look and feel with the sibling Check apps.
-- Companion mobile app (Expo/React Native): officer pairing via one-time payload
-  + QR, native libsodium end-to-end crypto, inbox and case views.
 - Reporter code screen: QR code plus print stylesheet for safe offline backup of
   the recovery code.
 - TicketCheck escalation export with idempotent re-export.

@@ -46,7 +46,6 @@ $pageIcons = [
 	'verbal' => 'phone',
 	'settings' => 'settings',
 	'categories' => 'settings',
-	'companion' => 'smartphone',
 	'admin' => 'shield-check',
 ];
 $headerIconName = (string)($_['wc_header_icon'] ?? ($pageIcons[$pageId] ?? 'shield-check'));

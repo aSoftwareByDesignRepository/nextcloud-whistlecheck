@@ -8,13 +8,13 @@ $section = $_['section'] ?? 'channel';
 $val = static fn (string $k) => $cfg[$k] ?? '';
 $rv = static fn (string $k) => (string)($rev[$k] ?? 0);
 $_['wc_nav_current'] = 'settings';
-$_['wc_page'] = $section === 'categories' ? 'categories' : ($section === 'companion' ? 'companion' : 'settings');
+$_['wc_page'] = $section === 'categories' ? 'categories' : 'settings';
 $_['wc_page_title'] = $l->t('WhistleCheck settings');
 $_['wc_page_help'] = $l->t('Channel behaviour, attachments, retention and access.');
 include __DIR__ . '/common/page-start.php';
 ?>
 		<nav class="wc-subnav" aria-label="<?php p($l->t('Settings sections')); ?>">
-			<?php foreach (['channel', 'categories', 'attachments', 'retention', 'access', 'companion', 'support'] as $s): ?>
+			<?php foreach (['channel', 'categories', 'attachments', 'retention', 'access', 'support'] as $s): ?>
 				<a href="<?php p($_['urlGenerator']->linkToRoute('whistlecheck.page.settings', ['section' => $s])); ?>"
 					<?php if ($s === $section): ?>aria-current="page"<?php endif; ?>><?php p($l->t(ucfirst($s))); ?></a>
 			<?php endforeach; ?>
@@ -32,27 +32,6 @@ include __DIR__ . '/common/page-start.php';
 					<input id="wc-cat-en" name="label_en" maxlength="200" required></div>
 				<button type="submit" class="wc-btn-primary"><?php p($l->t('Add category')); ?></button>
 			</form>
-
-		<?php elseif ($section === 'companion'): ?>
-			<h2><?php p($l->t('Companion app devices')); ?></h2>
-			<ul data-wc-devices class="wc-devices" aria-busy="true">
-				<li class="wc-loading"><?php p($l->t('Loading…')); ?></li>
-			</ul>
-			<form data-wc-pair-form>
-				<div class="wc-field"><label for="wc-dev-name"><?php p($l->t('Device name')); ?></label>
-					<input id="wc-dev-name" name="name" maxlength="64" required></div>
-				<button type="submit" class="wc-btn-primary"><?php p($l->t('Pair device')); ?></button>
-			</form>
-			<div data-wc-token-panel class="wc-panel" hidden>
-				<h3><?php p($l->t('Pair this device (shown once)')); ?></h3>
-				<div class="wc-qr-wrap" data-wc-pair-qr-wrap>
-					<canvas class="wc-qr" data-wc-pair-qr width="260" height="260"
-						aria-label="<?php p($l->t('QR code with the device pairing data')); ?>" role="img"></canvas>
-				</div>
-				<code data-wc-token class="wc-code-value"></code>
-				<p><button type="button" class="wc-btn-secondary" data-wc-copy-token><?php p($l->t('Copy pairing data')); ?></button></p>
-				<p class="wc-hint"><?php p($l->t('Scan the QR code with the companion app — or paste this pairing string into it. It contains your server address, the device token and your passphrase-protected key. It is shown only once.')); ?></p>
-			</div>
 
 		<?php elseif ($section === 'support'): ?>
 			<h2><?php p($l->t('Support')); ?></h2>

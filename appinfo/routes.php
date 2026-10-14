@@ -19,7 +19,7 @@ return [
 		['name' => 'page#verbal', 'url' => '/verbal', 'verb' => 'GET'],
 		['name' => 'page#settingsIndex', 'url' => '/settings', 'verb' => 'GET'],
 		['name' => 'page#settings', 'url' => '/settings/{section}', 'verb' => 'GET',
-			'requirements' => ['section' => 'access|channel|categories|attachments|retention|verbal|companion|audit|support']],
+			'requirements' => ['section' => 'access|channel|categories|attachments|retention|verbal|audit|support']],
 
 		// ── Public reporter pages (anonymous, no session) ───────────────────
 		['name' => 'publicPage#reportForm', 'url' => '/report', 'verb' => 'GET'],
@@ -65,18 +65,5 @@ return [
 		['name' => 'api#auditList', 'url' => '/api/audit', 'verb' => 'GET'],
 		['name' => 'api#stats', 'url' => '/api/stats', 'verb' => 'GET'],
 		['name' => 'api#verbalText', 'url' => '/api/verbal-text', 'verb' => 'GET'],
-		['name' => 'api#pairDevice', 'url' => '/api/devices', 'verb' => 'POST'],
-		['name' => 'api#listDevices', 'url' => '/api/devices', 'verb' => 'GET'],
-		['name' => 'api#revokeDevice', 'url' => '/api/devices/{deviceId}', 'verb' => 'DELETE'],
-
-		// ── Companion API (officer mobile app; NC-auth, E2E transport) ───────
-		['name' => 'companion#profile', 'url' => '/api/companion/profile', 'verb' => 'GET'],
-		['name' => 'companion#inbox', 'url' => '/api/companion/inbox', 'verb' => 'GET'],
-		['name' => 'companion#caseBundle', 'url' => '/api/companion/cases/{id}', 'verb' => 'GET', 'requirements' => ['id' => '\d+']],
-		['name' => 'companion#reply', 'url' => '/api/companion/cases/{id}/reply', 'verb' => 'POST', 'requirements' => ['id' => '\d+']],
-		['name' => 'companion#setStatus', 'url' => '/api/companion/cases/{id}/status', 'verb' => 'PUT', 'requirements' => ['id' => '\d+']],
-		['name' => 'companion#escalate', 'url' => '/api/companion/cases/{id}/escalate', 'verb' => 'POST', 'requirements' => ['id' => '\d+']],
-		['name' => 'companion#myWraps', 'url' => '/api/companion/wraps', 'verb' => 'GET'],
-		['name' => 'companion#registerKey', 'url' => '/api/companion/key', 'verb' => 'POST'],
 	],
 ];

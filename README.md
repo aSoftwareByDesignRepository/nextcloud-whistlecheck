@@ -22,7 +22,6 @@ and private keys never leave the browser.
 - Hash-chained audit log — no report content is ever logged
 - Abuse controls: HMAC-bucketed rate limits (no raw IPs), PoW escalation,
   single-use form tokens, idempotent submit
-- Companion-app API: paired-device bearer tokens (`wcd_…`), replay window
 - Two-person close rule when ≥2 officers are active
 - German + English UI, WCAG 2.1 AA, strict CSP on public pages
 

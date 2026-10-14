@@ -682,8 +682,6 @@
 	font-weight: 600;
 }
 
-.wc-devices { list-style: none; padding: 0; margin: 0 0 var(--wc-space-5); }
-.wc-devices li,
 .wc-grant-list li {
 	display: flex;
 	align-items: center;
@@ -781,7 +779,7 @@
 @media (prefers-contrast: more) {
 	.wc-panel, .wc-msg, .wc-table td, .wc-table th,
 	.wc-field input, .wc-field textarea, .wc-field select,
-	.wc-devices li, .wc-status, .wc-stat-tile, .wc-scope-strip {
+	.wc-status, .wc-stat-tile, .wc-scope-strip {
 		border-color: var(--color-main-text);
 	}
 	.wc-app :focus-visible { outline-width: 3px; }

@@ -138,15 +138,6 @@ test.describe('security: executed probes', () => {
 		}
 	})
 
-	test('companion API rejects missing and bogus bearer tokens', async ({ page }) => {
-		for (const headers of [{}, { Authorization: 'Bearer ' + randomBytes(32).toString('hex') }]) {
-			const res = await page.request.fetch('/apps/whistlecheck/api/companion/profile', {
-				headers: { 'X-Wc-Ts': String(Math.floor(Date.now() / 1000)), ...headers },
-			})
-			expect(res.status()).toBe(401)
-		}
-	})
-
 	test('SQLi payloads are stored as data, never executed', async ({ page }) => {
 		const { caseId } = makeCase(officerA.uid)
 		const payload = `'); DROP TABLE oc_wchk_cases;--`

@@ -69,27 +69,6 @@
 		if (toastState[key]) { toastState[key].el.remove(); delete toastState[key]; }
 	}
 
-	/** Render text into a QR canvas (vendored qrcode-generator, error level M). */
-	function renderQr(canvas, text) {
-		if (!canvas || !window.qrcode) return;
-		const q = window.qrcode(0, 'M');
-		q.addData(text);
-		q.make();
-		const count = q.getModuleCount();
-		const size = canvas.width || 260;
-		const cell = Math.max(1, Math.floor(size / (count + 8)));
-		const off = Math.floor((size - cell * count) / 2);
-		const ctx = canvas.getContext('2d');
-		ctx.fillStyle = '#fff';
-		ctx.fillRect(0, 0, size, size);
-		ctx.fillStyle = '#000';
-		for (let r = 0; r < count; r++) {
-			for (let c = 0; c < count; c++) {
-				if (q.isDark(r, c)) ctx.fillRect(off + c * cell, off + r * cell, cell, cell);
-			}
-		}
-	}
-
 	function copyText(text) {
 		if (navigator.clipboard && navigator.clipboard.writeText) {
 			return navigator.clipboard.writeText(text);
@@ -1137,99 +1116,7 @@
 		}
 	}
 
-	// ── devices + verbal ─────────────────────────────────────────────────
-
-	function initCompanion(root) {
-		const me = boot().wcUid;
-		const form = root.querySelector('[data-wc-pair-form]');
-		if (!form) return;
-		const tokenPanel = root.querySelector('[data-wc-token-panel]');
-		form.addEventListener('submit', async (ev) => {
-			ev.preventDefault();
-			const btn = form.querySelector('[type=submit]');
-			const name = form.querySelector('[name=name]').value.trim();
-			if (!name) return;
-			if (btn) btn.disabled = true;
-			try {
-				const res = await api('/api/devices', { method: 'POST', body: { name } });
-				// One-shot pairing payload: app base URL + bearer token + the
-				// passphrase-WRAPPED private key (ciphertext — safe to carry;
-				// the officer's passphrase is still required on the device).
-				// Shown once; only sha256(token) persists server-side.
-				const payload = { u: location.origin + base, t: res.token };
-				const blob = storedKeyBlob(me);
-				if (blob) payload.k = blob;
-				const pairStr = 'wchk-pair:' + btoa(JSON.stringify(payload))
-					.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-				const out = root.querySelector('[data-wc-token]');
-				out.textContent = pairStr;
-				if (tokenPanel) {
-					tokenPanel.hidden = false;
-					const copyBtn = tokenPanel.querySelector('[data-wc-copy-token]');
-					if (copyBtn) copyBtn.onclick = () => copyText(pairStr).then(
-						() => toast('success', t('copied', 'Copied.')),
-						() => toast('error', t('err_copy', 'Copy failed — select and copy the token manually.')));
-					renderQr(tokenPanel.querySelector('[data-wc-pair-qr]'), pairStr);
-					if (!blob) {
-						toast('error', t('pair_no_key', 'Your key is not on this device — the app can pair but cannot decrypt cases until the key is transferred.'));
-					}
-				}
-				form.reset();
-			} catch (e) {
-				toast('error', e.message);
-			} finally {
-				if (btn) btn.disabled = false;
-			}
-		});
-		const list = root.querySelector('[data-wc-devices]');
-		if (!list) return;
-		const loadDevices = () => api('/api/devices').then((d) => {
-			list.innerHTML = '';
-			list.removeAttribute('aria-busy');
-			if (!d.devices || d.devices.length === 0) {
-				const li = document.createElement('li');
-				li.className = 'wc-hint';
-				li.textContent = t('no_devices', 'No paired devices.');
-				list.appendChild(li);
-			}
-			(d.devices || []).forEach((dev) => {
-				const li = document.createElement('li');
-				li.textContent = dev.name + ' — ' + (dev.last_seen || dev.created) + ' ';
-				const b = document.createElement('button');
-				b.type = 'button';
-				b.className = 'wc-btn-secondary wc-btn-inline';
-				b.textContent = t('revoke', 'Revoke');
-				b.addEventListener('click', async () => {
-					if (b.disabled) return;
-					b.disabled = true;
-					try {
-						await api('/api/devices/' + dev.id, { method: 'DELETE' });
-						li.remove();
-						if (!list.children.length) loadDevices();
-					} catch (e) {
-						b.disabled = false;
-						toast('error', e.message || t('err_generic', 'Something went wrong. Please try again.'));
-					}
-				});
-				li.appendChild(b);
-				list.appendChild(li);
-			});
-		}).catch(() => {
-			list.innerHTML = '';
-			list.removeAttribute('aria-busy');
-			const li = document.createElement('li');
-			li.className = 'wc-load-error';
-			li.textContent = t('err_load', 'Could not load.') + ' ';
-			const btn = document.createElement('button');
-			btn.type = 'button';
-			btn.className = 'wc-btn-secondary wc-btn-inline';
-			btn.textContent = t('retry', 'Try again');
-			btn.addEventListener('click', loadDevices);
-			li.appendChild(btn);
-			list.appendChild(li);
-		});
-		loadDevices();
-	}
+	// ── verbal ───────────────────────────────────────────────────────────
 
 	async function initVerbal(root) {
 		try {
@@ -1263,7 +1150,7 @@
 		const init = {
 			inbox: initInbox, case: initCase, officers: initOfficers,
 			settings: initSettings, categories: initCategories, audit: initAudit,
-			stats: initStats, companion: initCompanion, verbal: initVerbal,
+			stats: initStats, verbal: initVerbal,
 		}[page];
 		if (init) init(root).catch((e) => toast('error', e.message || 'error'));
 	});

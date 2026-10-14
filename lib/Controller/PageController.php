@@ -29,7 +29,7 @@ use OCP\Util;
  */
 class PageController extends Controller
 {
-	private const SECTIONS = ['access', 'channel', 'categories', 'attachments', 'retention', 'verbal', 'companion', 'audit', 'support'];
+	private const SECTIONS = ['access', 'channel', 'categories', 'attachments', 'retention', 'verbal', 'audit', 'support'];
 
 	public function __construct(
 		string $appName,
@@ -117,7 +117,6 @@ class PageController extends Controller
 	{
 		Util::addScript('whistlecheck', 'vendor/libsodium-sumo');
 		Util::addScript('whistlecheck', 'vendor/libsodium-wrappers');
-		Util::addScript('whistlecheck', 'vendor/qrcode.min');
 		Util::addScript('whistlecheck', 'common/wc-crypto');
 		Util::addScript('whistlecheck', 'common/field-errors');
 		Util::addScript('whistlecheck', 'common/mobile-nav');
@@ -184,8 +183,6 @@ class PageController extends Controller
 			'retry' => $this->l->t('Try again'),
 			'copied' => $this->l->t('Copied.'),
 			'no_attachments' => $this->l->t('No attachments.'),
-			'no_devices' => $this->l->t('No paired devices.'),
-			'pair_no_key' => $this->l->t('Your key is not on this device — the app can pair but cannot decrypt cases until the key is transferred.'),
 			'col_case' => $this->l->t('Case'),
 			'col_status' => $this->l->t('Status'),
 			'col_due' => $this->l->t('Feedback due'),

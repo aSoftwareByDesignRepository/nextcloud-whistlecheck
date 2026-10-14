@@ -24,7 +24,6 @@ use OCA\WhistleCheck\Exception\DomainException;
 use OCA\WhistleCheck\Exception\ValidationException;
 use OCA\WhistleCheck\Service\AuditService;
 use OCA\WhistleCheck\Service\CaseService;
-use OCA\WhistleCheck\Service\CompanionService;
 use OCA\WhistleCheck\Service\ConfigService;
 use OCA\WhistleCheck\Service\DeadlineService;
 use OCA\WhistleCheck\Service\EvidenceExportService;
@@ -69,7 +68,6 @@ class ApiController extends Controller
 		private readonly StatsService $stats,
 		private readonly DeadlineService $deadlines,
 		private readonly EvidenceExportService $export,
-		private readonly CompanionService $companion,
 		private readonly VerbalChannelService $verbal,
 		private readonly EnvelopeService $envelope,
 		private readonly \OCA\WhistleCheck\Service\EscalationService $escalations,
@@ -508,7 +506,6 @@ class ApiController extends Controller
 				return $this->fail('invalid', 'Cannot revoke yourself', 400);
 			}
 			$this->officerKeys->revoke($uid, $actor);
-			$this->companion->purgeOfficerDevices($uid);
 			return $this->ok([]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -715,50 +712,6 @@ class ApiController extends Controller
 		try {
 			$this->officerGuard();
 			return $this->ok($this->verbal->offerText());
-		} catch (\Throwable $e) {
-			return $this->fromThrowable($e);
-		}
-	}
-
-	/**
-	 * Pair a companion device — token shown once, only its hash persists.
-	 */
-	#[NoAdminRequired]
-	public function pairDevice(string $name = ''): JSONResponse
-	{
-		try {
-			$uid = $this->officerGuard();
-			if (trim($name) === '') {
-				throw new ValidationException('invalid', 'Device name required', ['name' => 'required']);
-			}
-			return $this->ok($this->companion->pair($uid, $name), 201);
-		} catch (\Throwable $e) {
-			return $this->fromThrowable($e);
-		}
-	}
-
-	#[NoAdminRequired]
-	public function listDevices(): JSONResponse
-	{
-		try {
-			$uid = $this->officerGuard();
-			$out = [];
-			foreach ($this->companion->devices($uid) as $id => $d) {
-				$out[] = ['id' => $id, 'name' => $d['name'], 'created' => $d['created'], 'last_seen' => $d['last_seen']];
-			}
-			return $this->ok(['devices' => $out]);
-		} catch (\Throwable $e) {
-			return $this->fromThrowable($e);
-		}
-	}
-
-	#[NoAdminRequired]
-	public function revokeDevice(string $deviceId): JSONResponse
-	{
-		try {
-			$uid = $this->officerGuard();
-			$this->companion->revoke($uid, $deviceId);
-			return $this->ok([]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
 		}

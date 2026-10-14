@@ -25,7 +25,7 @@ WhistleCheck gives organisations a HinSchG/EU-Directive-ready internal reporting
 - Case management for officers: inbox, statuses, assignment, encrypted internal notes, legal hold, two-person close rule (optional)
 - Verifiable retention: crypto-shredding after the configurable retention period (§ 11 (5) HinSchG)
 - Append-only, hash-chained audit log — proves the procedure, never leaks content
-- Configurable channel texts, categories, attachment policy, retention and access — plus a companion API for the mobile app
+- Configurable channel texts, categories, attachment policy, retention and access
 - Translations (English, German), WCAG 2.1 AA
 
 ## Feedback welcome
@@ -52,7 +52,7 @@ WhistleCheck stellt Organisationen einen HinSchG-/EU-Richtlinie-konformen intern
 - Fallbearbeitung: Eingang, Status, Zuweisung, verschlüsselte interne Notizen, Legal Hold, optionales Vier-Augen-Prinzip
 - Nachweisbare Löschung per Crypto-Shredding nach Ablauf der Aufbewahrungsfrist (§ 11 Abs. 5 HinSchG)
 - Append-only Audit-Log mit Hash-Kette — belegt das Verfahren, verrät nie Inhalte
-- Konfigurierbare Texte, Kategorien, Anhangs-Policy, Aufbewahrung und Zugang — plus Companion-API für die mobile App
+- Konfigurierbare Texte, Kategorien, Anhangs-Policy, Aufbewahrung und Zugang
 - Übersetzungen (Deutsch, Englisch), WCAG 2.1 AA
 
 ## Feedback willkommen

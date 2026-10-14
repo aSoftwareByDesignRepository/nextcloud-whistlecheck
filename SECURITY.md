@@ -24,5 +24,3 @@ Do **not** open a public GitHub issue for security reports.
   stored. The daily salt rotates and is not retained.
 - The audit log is hash-chained and content-free by construction; it proves
   events, never content.
-- Device tokens for the companion app are bearer secrets (sha256-stored).
-  Revoke lost devices in Settings.
