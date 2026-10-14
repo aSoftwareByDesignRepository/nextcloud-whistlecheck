@@ -283,5 +283,5 @@ OC.L10N.register(
     "{n} entries": "{n} entrées",
     "{n} of {m} cases": "{n} cas sur {m}"
 },
-	"nplurals=2; plural=(n != 1);"
+	"nplurals=2; plural=(n > 1);"
 );

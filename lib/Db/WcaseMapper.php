@@ -62,6 +62,27 @@ class WcaseMapper extends QBMapper
 		return $this->findEntities($qb);
 	}
 
+	/**
+	 * Officer-scoped inbox: only cases the officer holds a key wrap for —
+	 * the join filters BEFORE the limit, so a wrap on an old case can never
+	 * be truncated away by newer cases the officer cannot see.
+	 *
+	 * @return list<Wcase>
+	 */
+	public function listInboxForOfficer(string $uid, int $limit = 500): array
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('c.*')
+			->from('wchk_cases', 'c')
+			->innerJoin('c', 'wchk_case_keys', 'k', $qb->expr()->andX(
+				$qb->expr()->eq('k.case_id', 'c.id'),
+				$qb->expr()->eq('k.officer_uid', $qb->createNamedParameter($uid))
+			))
+			->orderBy('c.id', 'DESC')
+			->setMaxResults($limit);
+		return $this->findEntities($qb);
+	}
+
 	public function countAll(): int
 	{
 		$qb = $this->db->getQueryBuilder();

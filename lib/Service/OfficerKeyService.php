@@ -78,32 +78,42 @@ class OfficerKeyService
 		}
 		$fp = $this->envelope->pubkeyFingerprint($pubkeyB64);
 
-		// Snapshot held case ids BEFORE any wipe: a self-wrap may only
-		// re-cover a case the officer provably held under the old key —
-		// and on first registration the held set is empty, so wraps are
-		// rejected there too rather than silently ignored.
-		$held = [];
-		foreach ($this->wraps->findForOfficer($uid) as $w) {
-			$held[$w->getCaseId()] = true;
-		}
-		foreach ($selfWraps as $caseId => $envJson) {
-			if (!isset($held[(int)$caseId])) {
-				throw new ValidationException('invalid_wrap', 'Cannot re-wrap a case you do not hold', ['wraps' => 'foreign case']);
-			}
-			if (!is_string($envJson) || !$this->envelope->isValidEnvelope($envJson, EnvelopeService::ALG_SEALEDBOX)) {
-				throw new ValidationException('invalid_wrap', 'Invalid wrapped key', ['wraps' => 'invalid wrap']);
-			}
-		}
+		// Everything correctness-sensitive happens behind the officer-row
+		// lock (FOR UPDATE): it serializes against a concurrent revoke()
+		// writing the same row, so the status this transaction acts on is the
+		// committed state — never a stale pre-tx snapshot that could
+		// resurrect a revoked officer with fresh wraps.
+		$this->db->beginTransaction();
+		try {
+			$existing = $this->officers->findByUidForUpdate($uid);
 
-		$existing = $this->officers->findByUid($uid);
-		if ($existing !== null && $existing->getStatus() === Officer::STATUS_ACTIVE) {
-			if ($existing->getPubkey() === $pubkeyB64) {
-				return $existing; // idempotent re-register — NOT a rotation
+			// Held case ids + self-wrap validation inside the lock: a
+			// self-wrap may only re-cover a case the officer provably holds
+			// at commit time — the wrap row is the authorization oracle, so
+			// minting one for a foreign case would be blind-write privilege
+			// escalation. On first registration the held set is empty, so
+			// wraps are rejected there too rather than silently ignored.
+			$held = [];
+			foreach ($this->wraps->findForOfficer($uid) as $w) {
+				$held[$w->getCaseId()] = true;
 			}
-			// Atomic: rotate + wipe + re-wrap in one commit — a failure
-			// mid-ceremony can no longer leave the officer wrapless.
-			$this->db->beginTransaction();
-			try {
+			foreach ($selfWraps as $caseId => $envJson) {
+				if (!isset($held[(int)$caseId])) {
+					throw new ValidationException('invalid_wrap', 'Cannot re-wrap a case you do not hold', ['wraps' => 'foreign case']);
+				}
+				if (!is_string($envJson) || !$this->envelope->isValidEnvelope($envJson, EnvelopeService::ALG_SEALEDBOX)) {
+					throw new ValidationException('invalid_wrap', 'Invalid wrapped key', ['wraps' => 'invalid wrap']);
+				}
+			}
+
+			if ($existing !== null && $existing->getStatus() === Officer::STATUS_ACTIVE) {
+				if ($existing->getPubkey() === $pubkeyB64) {
+					$this->db->commit();
+					return $existing; // idempotent re-register — NOT a rotation
+				}
+				// Atomic: rotate + wipe + re-wrap + audit in one commit — a
+				// failure mid-ceremony can no longer leave the officer
+				// wrapless or the rotation unrecorded.
 				$existing->setPubkey($pubkeyB64);
 				$existing->setFingerprint($fp);
 				$existing->setKeyVersion($existing->getKeyVersion() + 1);
@@ -120,29 +130,30 @@ class OfficerKeyService
 				}
 				$this->audit->record('officer_key_rotated', $uid, null, ['uid' => $uid, 'version' => $existing->getKeyVersion(), 'count' => count($selfWraps)]);
 				$this->db->commit();
-			} catch (\Throwable $e) {
-				$this->db->rollBack();
-				throw $e;
+				return $existing;
 			}
-			return $existing;
-		}
 
-		$officer = $existing ?? new Officer();
-		$officer->setUid($uid);
-		$officer->setPubkey($pubkeyB64);
-		$officer->setFingerprint($fp);
-		$officer->setStatus(Officer::STATUS_ACTIVE);
-		$officer->setKeyVersion(1);
-		$officer->setCreatedAt(new \DateTime('now', new \DateTimeZone('UTC')));
-		$officer->setRevokedAt(null);
-		$officer->setRevokedBy(null);
-		if ($existing === null) {
-			$officer = $this->officers->insert($officer);
-		} else {
-			$this->officers->update($officer);
+			$officer = $existing ?? new Officer();
+			$officer->setUid($uid);
+			$officer->setPubkey($pubkeyB64);
+			$officer->setFingerprint($fp);
+			$officer->setStatus(Officer::STATUS_ACTIVE);
+			$officer->setKeyVersion(1);
+			$officer->setCreatedAt(new \DateTime('now', new \DateTimeZone('UTC')));
+			$officer->setRevokedAt(null);
+			$officer->setRevokedBy(null);
+			if ($existing === null) {
+				$officer = $this->officers->insert($officer);
+			} else {
+				$this->officers->update($officer);
+			}
+			$this->audit->record('officer_key_registered', $actorUid ?? $uid, null, ['uid' => $uid]);
+			$this->db->commit();
+			return $officer;
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
 		}
-		$this->audit->record('officer_key_registered', $actorUid ?? $uid, null, ['uid' => $uid]);
-		return $officer;
 	}
 
 	/**
@@ -161,9 +172,11 @@ class OfficerKeyService
 		if ((!$inGroup) && ($target === null || $target->getStatus() === Officer::STATUS_REVOKED)) {
 			throw new DomainException('not_found', 'Not found', 404);
 		}
-		// Revoked + de-wrapped in one commit — a split failure must never
-		// leave a "revoked" officer with live wraps (still decrypts) or a
-		// de-wrapped officer still marked active (access without reads).
+		// Revoked + de-wrapped + audited in one commit — a split failure must
+		// never leave a "revoked" officer with live wraps (still decrypts), a
+		// de-wrapped officer still marked active (access without reads), or a
+		// revocation that never reached the audit chain (unproven lifecycle
+		// event).
 		$this->db->beginTransaction();
 		try {
 			if ($target !== null && $target->getStatus() !== Officer::STATUS_REVOKED) {
@@ -174,6 +187,7 @@ class OfficerKeyService
 				$this->officers->update($target);
 			}
 			$this->wraps->deleteForOfficer($targetUid);
+			$this->audit->record('officer_revoked', $actorUid, null, ['target_uid' => $targetUid]);
 			$this->db->commit();
 		} catch (\Throwable $e) {
 			$this->db->rollBack();
@@ -187,7 +201,6 @@ class OfficerKeyService
 		if ($group !== null && $user !== null && $group->inGroup($user)) {
 			$group->removeUser($user);
 		}
-		$this->audit->record('officer_revoked', $actorUid, null, ['target_uid' => $targetUid]);
 	}
 
 	/**
@@ -302,6 +315,13 @@ class OfficerKeyService
 			$wrap->setGrantedBy($grantedBy);
 			$wrap->setGrantedAt(new \DateTime('now', new \DateTimeZone('UTC')));
 			$this->wraps->insert($wrap);
+		}
+		// The grant is a security event: audit it inside the same transaction
+		// so a committed wrap can never exist without its provenance record.
+		// The anonymous submit path passes grantedBy=null and is already
+		// covered by 'case_submitted' inside the submit transaction.
+		if ($grantedBy !== null) {
+			$this->audit->record('wraps_granted', $grantedBy, $caseId, ['count' => count($wrapsByUid)]);
 		}
 	}
 }

@@ -149,6 +149,23 @@
 
 	// ── submit flow ──────────────────────────────────────────────────────
 
+	// Per-draft submission secrets: the idempotency key and the case code
+	// are generated ONCE per unchanged draft — an ambiguous failure (the
+	// network dropped after the server committed) retried with the same
+	// pair hits server-side dedupe instead of minting a duplicate case,
+	// and the code shown to the reporter always opens the committed case.
+	// Any edit to the form regenerates both: changed content is a new draft.
+	let draftSecrets = null;
+	function submissionSecrets() {
+		if (!draftSecrets) {
+			draftSecrets = {
+				ikey: crypto.randomUUID(),
+				genBytes: crypto.getRandomValues(new Uint8Array(16)),
+			};
+		}
+		return draftSecrets;
+	}
+
 	async function submitFlow(form) {
 		clearError();
 		const C = window.WcCrypto;
@@ -166,7 +183,7 @@
 		const btn = form.querySelector('[type=submit]');
 		const unbusy = setBusy(btn, t('sending', 'Sending…'));
 		try {
-			const genBytes = crypto.getRandomValues(new Uint8Array(16));
+			const { ikey, genBytes } = submissionSecrets();
 			const codeCanonical = C.encode(genBytes);
 
 			const saltV = await C.randomHex(16);
@@ -204,7 +221,7 @@
 			}
 
 			const payload = {
-				ikey: crypto.randomUUID(),
+				ikey,
 				hint: await C.hint(genBytes),
 				verifier: await C.verifier(genBytes, saltV),
 				code_salt: saltV,
@@ -475,6 +492,11 @@
 				ev.preventDefault();
 				submitFlow(reportForm);
 			});
+			// Any edit (text fields, category select, attachments) makes this
+			// a new draft — fresh ikey + fresh case code on next submit.
+			const invalidate = () => { draftSecrets = null; };
+			reportForm.addEventListener('input', invalidate);
+			reportForm.addEventListener('change', invalidate);
 		}
 		if (followForm && e2eCapable) {
 			followForm.addEventListener('submit', (ev) => {

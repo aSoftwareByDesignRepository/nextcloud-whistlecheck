@@ -246,7 +246,11 @@ class PageController extends Controller
 	{
 		$uid = $this->userSession->getUser()?->getUID();
 		if (!$uid || !$this->officerKeys->isOfficer($uid)) {
-			return new TemplateResponse('whistlecheck', 'denied', ['urlGenerator' => $this->urlGenerator], TemplateResponse::RENDER_AS_GUEST);
+			// Authorization failure must report 403 — a 200 denial poisons
+			// uptime/security scanners that read the status line.
+			$res = new TemplateResponse('whistlecheck', 'denied', ['urlGenerator' => $this->urlGenerator], TemplateResponse::RENDER_AS_GUEST);
+			$res->setStatus(403);
+			return $res;
 		}
 		return null;
 	}

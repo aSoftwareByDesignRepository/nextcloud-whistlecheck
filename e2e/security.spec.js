@@ -86,6 +86,15 @@ test.describe('security: executed probes', () => {
 		}
 	})
 
+	test('non-officer gets HTTP 403 on the officer page shell', async ({ page }) => {
+		// deny_page_status_200: an authorization failure rendered with a 200
+		// poisons status-line scanners — the denied template ships under 403.
+		await login(page, { username: outsider.uid, password: outsider.password })
+		const res = await page.request.get('/apps/whistlecheck/')
+		expect(res.status()).toBe(403)
+		expect(await res.text()).toContain('designated case officers')
+	})
+
 	test('officer without wrap gets byte-identical canonical 404 (no oracle)', async ({ page }) => {
 		const { caseId } = makeCase(officerA.uid)
 		try {

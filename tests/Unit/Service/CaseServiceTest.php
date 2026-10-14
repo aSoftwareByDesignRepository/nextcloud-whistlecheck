@@ -34,6 +34,7 @@ use PHPUnit\Framework\TestCase;
 final class CaseServiceTest extends TestCase
 {
 	private WcaseMapper&MockObject $cases;
+	private \OCA\WhistleCheck\Db\CaseKeyWrapMapper&MockObject $wraps;
 	private OfficerKeyService&MockObject $officerKeys;
 	private ConfigService&MockObject $config;
 	private IUserManager&MockObject $users;
@@ -44,6 +45,7 @@ final class CaseServiceTest extends TestCase
 	private IConfig&MockObject $sysConfig;
 	private string $instanceSecret = 'test-instance-secret';
 	private bool $casFails = false;
+	private ?\OCA\WhistleCheck\Db\CaseKeyWrap $heldWrap = null;
 	private CaseService $svc;
 
 	protected function setUp(): void
@@ -63,6 +65,13 @@ final class CaseServiceTest extends TestCase
 		$this->cases->method('updateWithRevision')->willReturnCallback(
 			fn (Wcase $c, int $rev) => $this->casFails ? 0 : ($c->setRevision($rev + 1) ?? 1));
 		$this->messages = $this->createMock(WmessageMapper::class);
+		$this->wraps = $this->createMock(\OCA\WhistleCheck\Db\CaseKeyWrapMapper::class);
+		// Officer mutations re-check the case wrap FOR UPDATE inside the
+		// transaction — default to "holds a wrap" so happy-path tests exercise
+		// the mutation; revoke-path tests null $this->heldWrap out.
+		$this->heldWrap = new \OCA\WhistleCheck\Db\CaseKeyWrap();
+		$this->wraps->method('findForCaseAndOfficerForUpdate')
+			->willReturnCallback(fn () => $this->heldWrap);
 		$this->sysConfig = $this->createMock(IConfig::class);
 		$this->sysConfig->method('getSystemValueString')
 			->willReturnCallback(fn (string $k, string $d = '') => $k === 'secret' ? $this->instanceSecret : $d);
@@ -86,7 +95,7 @@ final class CaseServiceTest extends TestCase
 			$this->db,
 			$this->users,
 			$this->sysConfig,
-			$this->createMock(\OCA\WhistleCheck\Db\CaseKeyWrapMapper::class),
+			$this->wraps,
 		);
 	}
 
@@ -153,6 +162,61 @@ final class CaseServiceTest extends TestCase
 			$this->assertSame(404, $e->getCode());
 			throw $e;
 		}
+	}
+
+	public function testSetStatusFailsWhenWrapVanishedInTx(): void
+	{
+		// Revoked mid-request: the FOR UPDATE re-check inside the mutation
+		// transaction sees the wrap deleted and the write never commits.
+		$case = $this->case(Wcase::STATUS_RECEIVED, 0);
+		$this->cases->method('find')->willReturn($case);
+		$this->heldWrap = null; // the FOR UPDATE re-check sees the wrap deleted
+		$this->cases->expects($this->never())->method('updateWithRevision');
+		$this->db->expects($this->once())->method('rollBack');
+		$this->db->expects($this->never())->method('commit');
+		try {
+			$this->svc->setStatus(1, Wcase::STATUS_IN_REVIEW, 0, 'revoked-officer');
+			$this->fail('expected not_found');
+		} catch (DomainException $e) {
+			$this->assertSame(404, $e->getCode());
+		}
+	}
+
+	public function testStatusChangeRollsBackWhenAuditAppendFails(): void
+	{
+		// The audit event is mandatory: if the chain append fails inside the
+		// transaction, the status mutation must roll back with it — a
+		// committed-but-unaudited lifecycle change is a compliance hole.
+		$case = $this->case(Wcase::STATUS_RECEIVED, 0);
+		$this->cases->method('find')->willReturn($case);
+		$this->cases->expects($this->once())->method('updateWithRevision');
+		$this->db->expects($this->once())->method('rollBack');
+		$this->db->expects($this->never())->method('commit');
+		$audit = $this->createMock(AuditService::class);
+		$audit->method('record')->willThrowException(new \RuntimeException('audit chain busy'));
+		$svc = new CaseService(
+			$this->cases,
+			$this->messages,
+			$this->createMock(WattachmentMapper::class),
+			$this->createMock(WnoteMapper::class),
+			$this->idem,
+			$this->createMock(CategoryMapper::class),
+			new CaseCodeService(),
+			new EnvelopeService(),
+			$this->deadlines,
+			$this->config,
+			$this->createMock(AttachmentService::class),
+			$this->officerKeys,
+			$audit,
+			$this->createMock(NotificationService::class),
+			new SanitizeService(),
+			$this->db,
+			$this->users,
+			$this->sysConfig,
+			$this->wraps,
+		);
+		$this->expectException(\RuntimeException::class);
+		$svc->setStatus(1, Wcase::STATUS_IN_REVIEW, 0, 'officer');
 	}
 
 	// --- two-person close ------------------------------------------------
@@ -230,7 +294,7 @@ final class CaseServiceTest extends TestCase
 			$this->db,
 			$this->users,
 			$this->sysConfig,
-			$this->createMock(\OCA\WhistleCheck\Db\CaseKeyWrapMapper::class),
+			$this->wraps,
 		);
 		$this->config->method('getInt')->willReturn(36);
 		$out = $svc->setStatus(1, Wcase::STATUS_CLOSED, 1, 'officer2');

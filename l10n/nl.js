@@ -122,7 +122,7 @@ OC.L10N.register(
     "Integrity:": "Integriteit:",
     "Internal notes": "Interne notities",
     "Invalid or expired case code.": "Ongeldige of verlopen meldingscode.",
-    "JavaScript is off: your report will be encrypted on our server instead of in your browser. End-to-end encryption requires JavaScript.": "JavaScript is uit: uw melding wordt op onze server versleuteld in plaats van in uw browser. End-to-end-versleuteling vereist JavaScript.",
+    "JavaScript is off: your report will be encrypted on our server instead of in your browser. End-to-end encryption requires JavaScript.": "JavaScript is uit: uw melding wordt op onze server versleuteld in plaats van in uw browser. Eind-tot-eind-versleuteling vereist JavaScript.",
     "Key registered. Keep your passphrase safe.": "Sleutel geregistreerd. Bewaar uw wachtwoordzin op een veilige plek.",
     "Key version": "Sleutelversie",
     "Keys and access": "Sleutels en toegang",

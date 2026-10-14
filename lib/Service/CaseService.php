@@ -442,6 +442,12 @@ class CaseService
 		// leave a committed message the caller was told failed (orphan bug).
 		$this->db->beginTransaction();
 		try {
+			// Officer replies re-check the wrap FOR UPDATE: a concurrent
+			// revoke must not interleave between the controller's read-side
+			// wrap check and this insert.
+			if ($direction === 'officer' && $authorUid !== null) {
+				$this->requireWrapForMutation($caseId, $authorUid);
+			}
 			$this->replyInTx($case, $direction, $cipher, $authorUid);
 			$this->db->commit();
 		} catch (\Throwable $e) {
@@ -502,6 +508,31 @@ class CaseService
 		}
 		$now = new \DateTime('now', new \DateTimeZone('UTC'));
 
+		// Mutation + mandatory audit in ONE transaction — an audit-append
+		// failure (e.g. chain-lock contention) must roll back the status
+		// change instead of committing an unproven lifecycle event.
+		$this->db->beginTransaction();
+		try {
+			// In-transaction wrap re-check: FOR UPDATE serializes against a
+			// concurrent revoke()'s wrap delete — a revoked officer's
+			// in-flight mutation fails uniformly instead of committing
+			// after de-wrapping.
+			$this->requireWrapForMutation($caseId, $actorUid);
+			$this->applyStatus($case, $to, $revision, $actorUid, $from, $now);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+		return $case;
+	}
+
+	/**
+	 * The write half of setStatus() — runs inside the caller's transaction.
+	 */
+	private function applyStatus(Wcase $case, string $to, int $revision, string $actorUid, string $from, \DateTime $now): void
+	{
+		$caseId = $case->getId();
 		if ($to === Wcase::STATUS_CLOSED || $to === Wcase::STATUS_ARCHIVED) {
 			// NH-05 two-person rule — only when ≥2 active officers exist; a
 			// single-officer org must not be locked out of closing.
@@ -525,7 +556,7 @@ class CaseService
 					$case->setCloseRequestedTo($to);
 					$this->persist($case, $revision);
 					$this->audit->record('close_requested', $actorUid, $caseId, ['to' => $to]);
-					return $case;
+					return;
 				}
 				if ($requester === $actorUid) {
 					// The requester may revise their own pending request to a
@@ -536,7 +567,7 @@ class CaseService
 						$case->setCloseRequestedTo($to);
 						$this->persist($case, $revision);
 						$this->audit->record('close_requested', $actorUid, $caseId, ['to' => $to, 'revised' => true]);
-						return $case;
+						return;
 					}
 					throw new DomainException('second_officer_required', 'A second officer must confirm', 409);
 				}
@@ -553,7 +584,7 @@ class CaseService
 			$case->setRetentionUntil($this->deadlines->retentionUntil($now, $this->config->getInt('retention_months')));
 			$this->persist($case, $revision);
 			$this->audit->record($to === Wcase::STATUS_CLOSED ? 'case_closed' : 'case_archived', $actorUid, $caseId, ['from' => $from]);
-			return $case;
+			return;
 		}
 
 		// Reopen: closed → in_review clears the closure stamp but keeps history in audit.
@@ -570,7 +601,19 @@ class CaseService
 		$case->setStatus($to);
 		$this->persist($case, $revision);
 		$this->audit->record('status_changed', $actorUid, $caseId, ['from' => $from, 'to' => $to]);
-		return $case;
+	}
+
+	/**
+	 * In-transaction wrap check for officer mutations — FOR UPDATE so it
+	 * serializes against a concurrent revoke()'s wrap delete: either the
+	 * delete committed first (row gone → uniform not-found) or this read
+	 * wins and the revoke waits for our commit before de-wrapping.
+	 */
+	private function requireWrapForMutation(int $caseId, string $uid): void
+	{
+		if ($this->wraps->findForCaseAndOfficerForUpdate($caseId, $uid) === null) {
+			throw new DomainException('not_found', 'Not found', 404);
+		}
 	}
 
 	/**
@@ -593,9 +636,19 @@ class CaseService
 				throw new ValidationException('invalid', 'Invalid assignee', ['assignee' => 'not an officer']);
 			}
 		}
-		$case->setAssignedTo($targetUid);
-		$this->persist($case, $revision);
-		$this->audit->record('case_assigned', $actorUid, $caseId, ['target_uid' => $targetUid ?? '']);
+		// Assignment + audit in ONE transaction (see setStatus) — an audited
+		// lifecycle event must never trail an autocommitted write.
+		$this->db->beginTransaction();
+		try {
+			$this->requireWrapForMutation($caseId, $actorUid);
+			$case->setAssignedTo($targetUid);
+			$this->persist($case, $revision);
+			$this->audit->record('case_assigned', $actorUid, $caseId, ['target_uid' => $targetUid ?? '']);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
 		return $case;
 	}
 
@@ -612,11 +665,20 @@ class CaseService
 		if ($case->getRevision() !== $revision) {
 			throw new ConflictException();
 		}
-		$case->setLegalHold($hold ? 1 : 0);
-		$case->setHoldReason($hold ? ($reason !== null ? $this->sanitize->plainText($reason, 255) : null) : null);
-		$case->setHoldSetBy($hold ? $actorUid : null);
-		$this->persist($case, $revision);
-		$this->audit->record($hold ? 'hold_set' : 'hold_released', $actorUid, $caseId, ['flag' => $hold]);
+		// Hold flag + audit in ONE transaction (see setStatus).
+		$this->db->beginTransaction();
+		try {
+			$this->requireWrapForMutation($caseId, $actorUid);
+			$case->setLegalHold($hold ? 1 : 0);
+			$case->setHoldReason($hold ? ($reason !== null ? $this->sanitize->plainText($reason, 255) : null) : null);
+			$case->setHoldSetBy($hold ? $actorUid : null);
+			$this->persist($case, $revision);
+			$this->audit->record($hold ? 'hold_set' : 'hold_released', $actorUid, $caseId, ['flag' => $hold]);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
 		return $case;
 	}
 

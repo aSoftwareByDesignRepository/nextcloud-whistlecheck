@@ -70,12 +70,23 @@ class RetentionService
 		}
 
 		foreach ($this->cases->findRetentionOpenExpired($today) as $case) {
-			$case->setRetentionWarned(1);
-			if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
-				continue; // concurrent write wins — warning stays due, retried next run
+			// Flag + notification + audit in ONE transaction — a failed audit
+			// append must roll the warn flag back (the warning then re-fires
+			// next run) instead of leaving an unproven lifecycle event.
+			$this->db->beginTransaction();
+			try {
+				$case->setRetentionWarned(1);
+				if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
+					$this->db->rollBack();
+					continue; // concurrent write wins — warning stays due, retried next run
+				}
+				$this->notify->notifyOfficers('wchk.retention_due', $case->getId());
+				$this->audit->record('retention_warned', null, $case->getId(), []);
+				$this->db->commit();
+			} catch (\Throwable $e) {
+				$this->db->rollBack();
+				throw $e;
 			}
-			$this->notify->notifyOfficers('wchk.retention_due', $case->getId());
-			$this->audit->record('retention_warned', null, $case->getId(), []);
 			$warned++;
 		}
 		return ['deleted' => $deleted, 'held' => $held, 'warned' => $warned];

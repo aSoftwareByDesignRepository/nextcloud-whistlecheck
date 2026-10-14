@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test'
 import { assertNotServerUpdater } from './helpers/auth.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
 import { ensureReporterTarget } from './helpers/public-target.js'
+import { queryDb } from './helpers/stack.js'
 
 /**
  * Anonymous reporter round-trip — the critical public flow, no login needed.
@@ -46,6 +47,52 @@ test.describe('public reporter flow', () => {
     await page.locator('#wc-reply-body').fill('E2E follow-up detail')
     await page.locator('#wc-reply-form [type=submit]').click()
     await expect(page.locator('.wc-messages')).toContainText('E2E follow-up detail', { timeout: 45000 })
+  })
+
+  test('ambiguous submit failure retries idempotently — one case, working code', async ({ page }) => {
+    test.setTimeout(180000) // argon2id + two submits is slow by design
+    const bodyText = `E2E dedupe ${Date.now()}`
+    const casesBefore = parseInt(queryDb('SELECT COUNT(*) FROM oc_wchk_cases'), 10)
+
+    await page.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('#wc-report-form')).toBeVisible()
+    await page.locator('#wc-title').fill('E2E retry dedupe')
+    await page.locator('#wc-body').fill(bodyText)
+
+    // Ambiguous failure: let the FIRST request commit on the server, then
+    // drop only the response so the client sees a network error. A retry
+    // must reuse the same draft (ikey + code) — not mint a duplicate case.
+    let dropped = false
+    await page.route('**/api/public/submit', async (route) => {
+      if (!dropped) {
+        dropped = true
+        const res = await route.fetch()
+        expect(res.ok()).toBeTruthy() // committed server-side
+        await route.abort()
+        return
+      }
+      await route.continue()
+    })
+
+    await page.locator('#wc-report-form [type=submit]').click()
+    await expect(page.locator('#wc-form-error')).toBeVisible({ timeout: 90000 })
+
+    // User retries — same draft content.
+    await page.locator('#wc-report-form [type=submit]').click()
+    const codeEl = page.locator('#wc-code-panel .wc-code-value')
+    await expect(codeEl).not.toBeEmpty({ timeout: 90000 })
+    const code = (await codeEl.textContent() || '').trim()
+
+    // The replay must have deduped: exactly one new case row exists.
+    const casesAfter = parseInt(queryDb('SELECT COUNT(*) FROM oc_wchk_cases'), 10)
+    expect(casesAfter - casesBefore).toBe(1)
+
+    // And the displayed code opens that case — ikey and code were stable
+    // across the retry, so the winner's row belongs to this code.
+    await page.goto('/apps/whistlecheck/case', { waitUntil: 'domcontentloaded' })
+    await page.locator('#wc-code').fill(code)
+    await page.locator('#wc-follow-form [type=submit]').click()
+    await expect(page.locator('.wc-messages')).toContainText(bodyText, { timeout: 30000 })
   })
 
   test('bogus code yields uniform invalid error, not an oracle', async ({ page }) => {

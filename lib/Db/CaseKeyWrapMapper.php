@@ -36,6 +36,29 @@ class CaseKeyWrapMapper extends QBMapper
 	}
 
 	/**
+	 * Locking read — FOR UPDATE bypasses the REPEATABLE READ snapshot and
+	 * takes the row lock, so an in-transaction wrap check serializes against
+	 * a concurrent revoke()'s DELETE of the same row: either the delete
+	 * commits first (row gone → uniform not-found) or this read wins and the
+	 * revoke waits for our commit before de-wrapping.
+	 */
+	public function findForCaseAndOfficerForUpdate(int $caseId, string $uid): ?CaseKeyWrap
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())
+			->where($qb->expr()->eq('case_id', $qb->createNamedParameter($caseId, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->eq('officer_uid', $qb->createNamedParameter($uid)));
+		$stmt = $this->db->executeQuery(
+			$qb->getSQL() . ' FOR UPDATE',
+			$qb->getParameters(),
+			$qb->getParameterTypes(),
+		);
+		$row = $stmt->fetch();
+		$stmt->closeCursor();
+		return $row === false ? null : $this->mapRowToEntity($row);
+	}
+
+	/**
 	 * Batch wrap lookup for inbox surfaces — one query instead of N.
 	 *
 	 * @param list<int> $caseIds
@@ -73,21 +96,6 @@ class CaseKeyWrapMapper extends QBMapper
 		$qb->select('*')->from($this->getTableName())
 			->where($qb->expr()->eq('officer_uid', $qb->createNamedParameter($uid)));
 		return $this->findEntities($qb);
-	}
-
-	/**
-	 * Replace/insert a wrap idempotently (re-wrap flow must be retry-safe).
-	 */
-	public function upsert(CaseKeyWrap $wrap): CaseKeyWrap
-	{
-		$existing = $this->findForCaseAndOfficer((int)$wrap->getCaseId(), (string)$wrap->getOfficerUid());
-		if ($existing !== null) {
-			$existing->setWrappedKey($wrap->getWrappedKey());
-			$existing->setGrantedBy($wrap->getGrantedBy());
-			$existing->setGrantedAt($wrap->getGrantedAt());
-			return $this->update($existing);
-		}
-		return $this->insert($wrap);
 	}
 
 	public function deleteForCase(int $caseId): int

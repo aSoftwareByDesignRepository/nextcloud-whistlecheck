@@ -40,7 +40,8 @@ class ReminderServiceTest extends TestCase
 		$this->config->method('getInt')->willReturnCallback(
 			fn (string $k) => $k === 'reminder_days' ? 14 : 0
 		);
-		$this->svc = new ReminderService($this->cases, $this->deadlines, $this->config, $this->notify, $this->audit);
+		$this->svc = new ReminderService($this->cases, $this->deadlines, $this->config, $this->notify, $this->audit,
+			$this->createMock(\OCP\IDBConnection::class));
 	}
 
 	private function case(int $id): Wcase

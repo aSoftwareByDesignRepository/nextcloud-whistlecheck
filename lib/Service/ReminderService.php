@@ -27,6 +27,7 @@ class ReminderService
 		private readonly ConfigService $config,
 		private readonly NotificationService $notify,
 		private readonly AuditService $audit,
+		private readonly \OCP\IDBConnection $db,
 	) {
 	}
 
@@ -38,26 +39,45 @@ class ReminderService
 		$reminded = $escalated = 0;
 
 		foreach ($this->cases->findDueSoon($today, $days) as $case) {
-			$case->setReminderSentAt(new \DateTime('now', new \DateTimeZone('UTC')));
-			if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
-				continue; // officer mutated concurrently — next run re-detects
+			// Flag + notification + audit in ONE transaction — a failed audit
+			// append must roll the flag back (the reminder re-fires next run)
+			// instead of leaving an unproven lifecycle event.
+			$this->db->beginTransaction();
+			try {
+				$case->setReminderSentAt(new \DateTime('now', new \DateTimeZone('UTC')));
+				if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
+					$this->db->rollBack();
+					continue; // officer mutated concurrently — next run re-detects
+				}
+				$this->notify->notifyOfficers('wchk.due_soon', $case->getId());
+				$this->audit->record('reminder_sent', null, $case->getId(), ['days' => $days]);
+				$this->db->commit();
+			} catch (\Throwable $e) {
+				$this->db->rollBack();
+				throw $e;
 			}
-			$this->notify->notifyOfficers('wchk.due_soon', $case->getId());
-			$this->audit->record('reminder_sent', null, $case->getId(), ['days' => $days]);
 			$reminded++;
 		}
 
 		$escalationUid = $this->config->get('escalation_uid');
 		foreach ($this->cases->findOverdue($today) as $case) {
-			$case->setOverdueNotifiedAt(new \DateTime('now', new \DateTimeZone('UTC')));
-			if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
-				continue;
+			$this->db->beginTransaction();
+			try {
+				$case->setOverdueNotifiedAt(new \DateTime('now', new \DateTimeZone('UTC')));
+				if ($this->cases->updateWithRevision($case, $case->getRevision()) === 0) {
+					$this->db->rollBack();
+					continue;
+				}
+				$this->notify->notifyOfficers('wchk.overdue', $case->getId());
+				if ($escalationUid !== '') {
+					$this->notify->notifyUids([$escalationUid], 'wchk.overdue_escalation', $case->getId());
+				}
+				$this->audit->record('overdue_notified', null, $case->getId(), []);
+				$this->db->commit();
+			} catch (\Throwable $e) {
+				$this->db->rollBack();
+				throw $e;
 			}
-			$this->notify->notifyOfficers('wchk.overdue', $case->getId());
-			if ($escalationUid !== '') {
-				$this->notify->notifyUids([$escalationUid], 'wchk.overdue_escalation', $case->getId());
-			}
-			$this->audit->record('overdue_notified', null, $case->getId(), []);
 			$escalated++;
 		}
 

@@ -172,7 +172,7 @@ final class OfficerKeyServiceTest extends TestCase
 	public function testReRegisterSameKeyIsNoOpNotRotation(): void
 	{
 		$existing = $this->activeOfficer('o1', 3);
-		$this->officers->method('findByUid')->willReturn($existing);
+		$this->officers->method('findByUidForUpdate')->willReturn($existing);
 		$user = $this->createMock(IUser::class);
 		$this->users->method('get')->willReturn($user);
 		$this->groups->method('isInGroup')->willReturn(true);
@@ -187,7 +187,7 @@ final class OfficerKeyServiceTest extends TestCase
 	public function testRotationWipesStaleWraps(): void
 	{
 		$existing = $this->activeOfficer('o1', 2);
-		$this->officers->method('findByUid')->willReturn($existing);
+		$this->officers->method('findByUidForUpdate')->willReturn($existing);
 		$user = $this->createMock(IUser::class);
 		$this->users->method('get')->willReturn($user);
 		$this->groups->method('isInGroup')->willReturn(true);
@@ -201,7 +201,7 @@ final class OfficerKeyServiceTest extends TestCase
 	public function testRotationRewrapsHeldCasesAtomically(): void
 	{
 		$existing = $this->activeOfficer('o1', 2);
-		$this->officers->method('findByUid')->willReturn($existing);
+		$this->officers->method('findByUidForUpdate')->willReturn($existing);
 		$this->groups->method('isInGroup')->willReturn(true);
 		$w3 = new CaseKeyWrap(); $w3->setCaseId(3);
 		$w5 = new CaseKeyWrap(); $w5->setCaseId(5);
@@ -223,7 +223,7 @@ final class OfficerKeyServiceTest extends TestCase
 		// outright — the wrap row IS the authorization oracle; minting one
 		// on a foreign case would be blind-write privilege escalation.
 		$existing = $this->activeOfficer('o1', 2);
-		$this->officers->method('findByUid')->willReturn($existing);
+		$this->officers->method('findByUidForUpdate')->willReturn($existing);
 		$this->groups->method('isInGroup')->willReturn(true);
 		$w3 = new CaseKeyWrap(); $w3->setCaseId(3);
 		$this->wraps->method('findForOfficer')->willReturn([$w3]);
@@ -237,7 +237,7 @@ final class OfficerKeyServiceTest extends TestCase
 	public function testRotationRejectsMalformedSelfWrap(): void
 	{
 		$existing = $this->activeOfficer('o1', 2);
-		$this->officers->method('findByUid')->willReturn($existing);
+		$this->officers->method('findByUidForUpdate')->willReturn($existing);
 		$this->groups->method('isInGroup')->willReturn(true);
 		$w3 = new CaseKeyWrap(); $w3->setCaseId(3);
 		$this->wraps->method('findForOfficer')->willReturn([$w3]);
@@ -250,9 +250,29 @@ final class OfficerKeyServiceTest extends TestCase
 	{
 		// Held set is empty on first registration — wraps are rejected, not
 		// silently ignored.
-		$this->officers->method('findByUid')->willReturn(null);
+		$this->officers->method('findByUidForUpdate')->willReturn(null);
 		$this->groups->method('isInGroup')->willReturn(true);
 		$this->wraps->method('findForOfficer')->willReturn([]);
+		$this->expectException(ValidationException::class);
+		$this->svc->register('o1', base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES)), null,
+			[3 => $this->sealedbox()]);
+	}
+
+	public function testRegisterInsideLockRejectsStaleSelfWrapsAfterRevoke(): void
+	{
+		// Register-vs-revoke race: the request passed isOfficer, but a
+		// concurrent revoke committed first — the FOR UPDATE read inside the
+		// transaction sees REVOKED + wiped wraps, so the stale self-wraps
+		// must be rejected instead of minting wraps a revoked officer
+		// claimed to hold. (Re-onboarding with no wraps is still legitimate
+		// when the officer remains in the group.)
+		$revoked = $this->activeOfficer('o1', 2);
+		$revoked->setStatus(Officer::STATUS_REVOKED);
+		$this->officers->method('findByUidForUpdate')->willReturn($revoked);
+		$this->groups->method('isInGroup')->willReturn(true);
+		$this->wraps->method('findForOfficer')->willReturn([]); // revoked → wiped
+		$this->wraps->expects($this->never())->method('insert');
+		$this->db->expects($this->once())->method('rollBack');
 		$this->expectException(ValidationException::class);
 		$this->svc->register('o1', base64_encode(random_bytes(SODIUM_CRYPTO_BOX_PUBLICKEYBYTES)), null,
 			[3 => $this->sealedbox()]);
@@ -261,7 +281,7 @@ final class OfficerKeyServiceTest extends TestCase
 	public function testRotationRollsBackOnWrapInsertFailure(): void
 	{
 		$existing = $this->activeOfficer('o1', 2);
-		$this->officers->method('findByUid')->willReturn($existing);
+		$this->officers->method('findByUidForUpdate')->willReturn($existing);
 		$this->groups->method('isInGroup')->willReturn(true);
 		$w3 = new CaseKeyWrap(); $w3->setCaseId(3);
 		$this->wraps->method('findForOfficer')->willReturn([$w3]);

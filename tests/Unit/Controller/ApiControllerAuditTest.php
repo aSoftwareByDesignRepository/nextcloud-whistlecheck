@@ -84,6 +84,7 @@ final class ApiControllerAuditTest extends TestCase
 			$this->createMock(VerbalChannelService::class),
 			new EnvelopeService(),
 			$this->createMock(EscalationService::class),
+			$this->createMock(\OCP\IDBConnection::class),
 		);
 	}
 

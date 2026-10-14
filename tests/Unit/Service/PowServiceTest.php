@@ -93,20 +93,39 @@ final class PowServiceTest extends TestCase
 	{
 		$bucket = 'bucket-a';
 		$c = $this->svc->issue($bucket);
-		$nonce = $this->solveBound($c['challenge'], 'ikey-123', 8);
+		// The replay assertions are only deterministic if the nonce is known
+		// to FAIL the other binds — a nonce that merely satisfies 'ikey-123'
+		// coincidentally passes another bind with probability ~2^-difficulty.
+		$nonce = $this->solveBoundOnly($c['challenge'], 'ikey-123', ['ikey-999', ''], 8);
 		$this->assertTrue($this->svc->verify($bucket, $c['challenge'], $nonce, 8, 'ikey-123'));
 		// Same proof under a different bind = replay → rejected.
 		$this->assertFalse($this->svc->verify($bucket, $c['challenge'], $nonce, 8, 'ikey-999'));
 		$this->assertFalse($this->svc->verify($bucket, $c['challenge'], $nonce, 8));
 	}
 
-	private function solveBound(string $challengeB64, string $bind, int $difficulty): string
+	/**
+	 * Find a nonce that meets $difficulty for $bind AND provably fails every
+	 * bind in $failBinds — so replay assertions are deterministic, not
+	 * probabilistic.
+	 *
+	 * @param list<string> $failBinds
+	 */
+	private function solveBoundOnly(string $challengeB64, string $bind, array $failBinds, int $difficulty): string
 	{
 		$challenge = base64_decode($challengeB64, true);
 		while (true) {
 			$nonce = random_bytes(16);
-			$digest = hash('sha256', $challenge . $bind . $nonce, true);
-			if ($this->lz($digest) >= $difficulty) {
+			if ($this->lz(hash('sha256', $challenge . $bind . $nonce, true)) < $difficulty) {
+				continue;
+			}
+			$ok = true;
+			foreach ($failBinds as $other) {
+				if ($this->lz(hash('sha256', $challenge . $other . $nonce, true)) >= $difficulty) {
+					$ok = false;
+					break;
+				}
+			}
+			if ($ok) {
 				return base64_encode($nonce);
 			}
 		}

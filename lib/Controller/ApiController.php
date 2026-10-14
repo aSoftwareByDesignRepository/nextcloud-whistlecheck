@@ -71,6 +71,7 @@ class ApiController extends Controller
 		private readonly VerbalChannelService $verbal,
 		private readonly EnvelopeService $envelope,
 		private readonly \OCA\WhistleCheck\Service\EscalationService $escalations,
+		private readonly \OCP\IDBConnection $db,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -105,15 +106,39 @@ class ApiController extends Controller
 		return $case;
 	}
 
+	/**
+	 * Run $fn inside a transaction — mutation + mandatory audit append
+	 * commit or roll back together (a contended audit chain must never
+	 * leave an unproven lifecycle event).
+	 */
+	private function inTx(callable $fn): void
+	{
+		$this->db->beginTransaction();
+		try {
+			$fn();
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
 	#[NoAdminRequired]
 	public function inbox(): JSONResponse
 	{
 		try {
 			$uid = $this->officerGuard();
 			$today = $this->deadlines->today();
-			$rows = $this->caseMapper->listInbox(501);
+			// Wrap-scoped in SQL BEFORE the limit — a wrap on an old case can
+			// never be truncated away by newer cases this officer cannot see.
+			$rows = $this->caseMapper->listInboxForOfficer($uid, 501);
 			$truncated = count($rows) > 500;
 			$rows = array_slice($rows, 0, 500);
+			// Spec US-003 AC-3: overdue cases sort first, then newest.
+			usort($rows, static function (\OCA\WhistleCheck\Db\Wcase $a, \OCA\WhistleCheck\Db\Wcase $b) use ($today): int {
+				$overdue = (int)$b->isOverdue($today) <=> (int)$a->isOverdue($today);
+				return $overdue !== 0 ? $overdue : ((int)$b->getId() <=> (int)$a->getId());
+			});
 			$wrapsByCase = $this->wrapMapper->findForCasesAndOfficer(
 				array_map(fn ($c) => (int)$c->getId(), $rows),
 				$uid
@@ -312,14 +337,23 @@ class ApiController extends Controller
 				|| !$this->envelope->isValidEnvelope($cipher)) {
 				throw new ValidationException('invalid', 'Invalid note', ['note' => 'invalid']);
 			}
-			$note = new \OCA\WhistleCheck\Db\Wnote();
-			$note->setCaseId($id);
-			$note->setCipher($cipher);
-			$note->setAuthorUid($uid);
-			$note->setCreatedAt(new \DateTime('now', new \DateTimeZone('UTC')));
-			$this->noteMapper->insert($note);
-			$this->audit->record('note_added', $uid, $id, []);
-			return $this->ok(['id' => $note->getId()], 201);
+			$noteId = 0;
+			// Insert + audit in ONE transaction; the FOR UPDATE wrap re-check
+			// serializes against a concurrent revoke's wrap delete.
+			$this->inTx(function () use ($id, $uid, $cipher, &$noteId) {
+				if ($this->wrapMapper->findForCaseAndOfficerForUpdate($id, $uid) === null) {
+					throw new DomainException('not_found', 'Not found', 404);
+				}
+				$note = new \OCA\WhistleCheck\Db\Wnote();
+				$note->setCaseId($id);
+				$note->setCipher($cipher);
+				$note->setAuthorUid($uid);
+				$note->setCreatedAt(new \DateTime('now', new \DateTimeZone('UTC')));
+				$this->noteMapper->insert($note);
+				$this->audit->record('note_added', $uid, $id, []);
+				$noteId = (int)$note->getId();
+			});
+			return $this->ok(['id' => $noteId], 201);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
 		}
@@ -337,8 +371,13 @@ class ApiController extends Controller
 			if ($note === null || $note->getCaseId() !== $id || $note->getAuthorUid() !== $uid) {
 				return $this->notFound(); // not found OR not yours — one payload
 			}
-			$this->noteMapper->delete($note);
-			$this->audit->record('note_deleted', $uid, $id, []);
+			$this->inTx(function () use ($id, $uid, $note) {
+				if ($this->wrapMapper->findForCaseAndOfficerForUpdate($id, $uid) === null) {
+					throw new DomainException('not_found', 'Not found', 404);
+				}
+				$this->noteMapper->delete($note);
+				$this->audit->record('note_deleted', $uid, $id, []);
+			});
 			return $this->ok([]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -486,11 +525,12 @@ class ApiController extends Controller
 				}
 				// storeWraps enforces the re-wrap authorization invariant
 				// inside its transaction: the grantor must hold a wrap on
-				// the case (prevents foreign grants), checked under lock.
+				// the case (prevents foreign grants), checked under lock —
+				// and records 'wraps_granted' inside the same commit so a
+				// grant can never land without its provenance event.
 				$this->officerKeys->storeWraps($caseId, [$targetUid => $entry], $uid);
 				$granted++;
 			}
-			$this->audit->record('wraps_granted', $uid, null, ['count' => $granted]);
 			return $this->ok(['granted' => $granted]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -567,8 +607,10 @@ class ApiController extends Controller
 				if ($rev === null) {
 					return $this->fail('CONFLICT', 'Missing revision for ' . $key, 409);
 				}
-				$this->config->set((string)$key, (string)$value, $rev, $uid);
-				$this->audit->record('config_changed', $uid, null, ['key' => (string)$key]);
+				$this->inTx(function () use ($key, $value, $rev, $uid) {
+					$this->config->set((string)$key, (string)$value, $rev, $uid);
+					$this->audit->record('config_changed', $uid, null, ['key' => (string)$key]);
+				});
 			}
 			return $this->ok(['revisions' => $this->config->revisions()]);
 		} catch (\Throwable $e) {
@@ -600,8 +642,10 @@ class ApiController extends Controller
 			$cat->setLabelJson((string)json_encode(['de' => mb_substr((string)$labels['de'], 0, 200), 'en' => mb_substr((string)$labels['en'], 0, 200)], JSON_THROW_ON_ERROR));
 			$cat->setArchived(0);
 			$cat->setSort(count($this->categoryMapper->findAll()));
-			$this->categoryMapper->insert($cat);
-			$this->audit->record('category_added', $uid, null, []);
+			$this->inTx(function () use ($cat, $uid) {
+				$this->categoryMapper->insert($cat);
+				$this->audit->record('category_added', $uid, null, []);
+			});
 			return $this->ok(['categories' => $this->categoryList()], 201);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -627,8 +671,10 @@ class ApiController extends Controller
 				}
 				$cat->setLabelJson((string)json_encode($cur, JSON_THROW_ON_ERROR));
 			}
-			$this->categoryMapper->update($cat);
-			$this->audit->record('category_updated', $uid, null, []);
+			$this->inTx(function () use ($cat, $uid) {
+				$this->categoryMapper->update($cat);
+				$this->audit->record('category_updated', $uid, null, []);
+			});
 			return $this->ok(['categories' => $this->categoryList()]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);
@@ -648,8 +694,10 @@ class ApiController extends Controller
 				return $this->notFound();
 			}
 			$cat->setArchived(1);
-			$this->categoryMapper->update($cat);
-			$this->audit->record('category_archived', $uid, null, []);
+			$this->inTx(function () use ($cat, $uid) {
+				$this->categoryMapper->update($cat);
+				$this->audit->record('category_archived', $uid, null, []);
+			});
 			return $this->ok(['categories' => $this->categoryList()]);
 		} catch (\Throwable $e) {
 			return $this->fromThrowable($e);

@@ -41,6 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transaction with rollback.
 - Reporter reply gained an idempotency key bound to the client draft; retries
   can no longer double-post.
+- Every audited mutation now commits atomically with its audit-chain event —
+  status, assignment, hold, notes, categories, settings, key registration,
+  revocation, wrap grants, retention warnings and deadline reminders can no
+  longer land without their provenance record.
+- Officer mutations re-check the case-key wrap FOR UPDATE inside the write
+  transaction — a concurrent revocation can no longer interleave between
+  access check and write.
+- Key rotation re-reads the officer row under FOR UPDATE inside its
+  transaction, so a concurrent revocation can never be resurrected with
+  fresh wraps, and self-wraps are validated against the commit-time held set.
+- Officer inbox applies the wrap scope in SQL before the row limit — wraps on
+  older cases can no longer be truncated away by newer unreadable cases —
+  and overdue cases sort first (spec US-003 AC-3).
+- The denied officer page now answers HTTP 403 instead of rendering under 200.
+- Report submission keeps one idempotency key + case code per unchanged
+  draft — a retry after an ambiguous network failure dedupes server-side
+  instead of creating a second unreachable case.
 - PostgreSQL compatibility: upgrade-backup restore no longer requires the
   superuser-only `session_replication_role`; per-table trigger suppression runs
   inside the restore transaction.

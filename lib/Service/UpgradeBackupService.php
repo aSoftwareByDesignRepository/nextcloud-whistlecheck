@@ -166,6 +166,8 @@ class UpgradeBackupService
 			try {
 				$snapshots[] = $this->readManifest($this->getSnapshotFolder($snapshotId), $snapshotId);
 			} catch (\Throwable $e) {
+				// best-effort: one corrupt folder must not hide every good
+				// snapshot from the restore listing — skip it and log.
 				$this->logger->warning('WhistleCheck: skipping unreadable upgrade backup folder', [
 					'app' => UpgradeBackupCatalog::APP_ID,
 					'folder' => $snapshotId,
@@ -491,6 +493,7 @@ class UpgradeBackupService
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')->from($table);
 		$result = $qb->executeQuery();
+		/** @var list<array<string, mixed>> $rows */
 		$rows = $result->fetchAll();
 		$result->closeCursor();
 
@@ -548,6 +551,7 @@ class UpgradeBackupService
 			->where($qb->expr()->eq('app', $qb->createNamedParameter(UpgradeBackupCatalog::APP_ID)));
 
 		$result = $qb->executeQuery();
+		/** @var list<array<string, mixed>> $rows */
 		$rows = $result->fetchAll();
 		$result->closeCursor();
 
@@ -719,7 +723,7 @@ class UpgradeBackupService
 
 	private function restorePreferences(Folder $snapshotFolder): void
 	{
-		/** @var list<array{userid: string, configkey: string, configvalue: string}> $rows */
+		/** @var list<array<string, mixed>> $rows */
 		$rows = json_decode($this->readFile($snapshotFolder, 'preferences.json'), true, 512, JSON_THROW_ON_ERROR);
 
 		$deleteQb = $this->db->getQueryBuilder();
@@ -770,6 +774,9 @@ class UpgradeBackupService
 		}
 	}
 
+	/**
+	 * @param list<string> $excludeIds
+	 */
 	private function rotateSnapshots(array $excludeIds = []): void
 	{
 		$max = UpgradeBackupCatalog::clampMaxSnapshots((int)$this->config->getAppValue(
@@ -796,6 +803,9 @@ class UpgradeBackupService
 
 	/**
 	 * @param array<string, mixed> $payload
+	 */
+	/**
+	 * @param array<array-key, mixed> $payload
 	 */
 	private function writeJsonFile(Folder $parent, string $name, array $payload): void
 	{

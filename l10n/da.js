@@ -122,7 +122,7 @@ OC.L10N.register(
     "Integrity:": "Integritet:",
     "Internal notes": "Interne noter",
     "Invalid or expired case code.": "Ugyldig eller udløbet sagskode.",
-    "JavaScript is off: your report will be encrypted on our server instead of in your browser. End-to-end encryption requires JavaScript.": "JavaScript er slået fra: din indberetning krypteres på vores server i stedet for i din browser. End-to-end-kryptering kræver JavaScript.",
+    "JavaScript is off: your report will be encrypted on our server instead of in your browser. End-to-end encryption requires JavaScript.": "JavaScript er slået fra: din indberetning krypteres på vores server i stedet for i din browser. Ende-til-ende-kryptering kræver JavaScript.",
     "Key registered. Keep your passphrase safe.": "Nøgle registreret. Opbevar din adgangssætning sikkert.",
     "Key version": "Nøgleversion",
     "Keys and access": "Nøgler og adgang",
