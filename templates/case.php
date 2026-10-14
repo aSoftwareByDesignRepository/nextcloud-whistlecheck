@@ -11,11 +11,6 @@ $_['wc_extra_attrs'] = [
 ];
 include __DIR__ . '/common/page-start.php';
 ?>
-		<p><?php p($l->t('Status:')); ?> <strong class="wc-status" data-wc-status-badge></strong></p>
-		<p class="wc-pending-close" data-wc-close-pending role="status" hidden>
-			<span data-wc-close-pending-text></span>
-		</p>
-
 		<section class="wc-panel wc-unlock" data-wc-unlock hidden
 			aria-labelledby="wc-unlock-heading">
 			<h2 id="wc-unlock-heading"><?php p($l->t('Unlock your key')); ?></h2>
@@ -31,65 +26,89 @@ include __DIR__ . '/common/page-start.php';
 		<div data-wc-case-body aria-busy="true">
 		<p class="wc-loading" data-wc-loading><?php p($l->t('Loading…')); ?></p>
 
-		<div class="wc-status-actions" role="group" aria-label="<?php p($l->t('Set status')); ?>">
-			<?php
-			$statusLabels = [
-				'in_review' => $l->t('In review'),
-				'action_taken' => $l->t('Action taken'),
-				'closed' => $l->t('Closed'),
-				'archived' => $l->t('Archived'),
-			];
-			foreach ($statusLabels as $s => $label): ?>
-				<button type="button" class="wc-btn-secondary" data-wc-status="<?php p($s); ?>"><?php p($label); ?></button>
-			<?php endforeach; ?>
-		</div>
-
-		<div class="wc-field wc-assign">
-			<label for="wc-assignee"><?php p($l->t('Assigned to')); ?></label>
-			<select id="wc-assignee" data-wc-assign>
-				<option value=""><?php p($l->t('Unassigned')); ?></option>
-				<?php foreach (($_['officers'] ?? []) as $o): ?>
-					<option value="<?php p($o['uid']); ?>"><?php p($o['uid']); ?></option>
+		<section class="wc-panel wc-case-hero" aria-label="<?php p($l->t('Case summary')); ?>">
+			<p class="wc-case-hero__status">
+				<strong class="wc-badge" data-wc-status-badge></strong>
+				<span class="wc-badge wc-badge--danger wc-badge-overdue" data-wc-overdue-badge hidden>
+					<span class="wc-badge__dot" aria-hidden="true"></span><?php p($l->t('OVERDUE')); ?>
+				</span>
+			</p>
+			<dl class="wc-case-meta">
+				<div class="wc-case-meta__item">
+					<dt><?php p($l->t('Received')); ?></dt>
+					<dd data-wc-meta-received>—</dd>
+				</div>
+				<div class="wc-case-meta__item">
+					<dt><?php p($l->t('Feedback due')); ?></dt>
+					<dd data-wc-meta-due>—</dd>
+				</div>
+				<div class="wc-case-meta__item">
+					<dt><label for="wc-assignee"><?php p($l->t('Assigned to')); ?></label></dt>
+					<dd>
+						<select id="wc-assignee" data-wc-assign>
+							<option value=""><?php p($l->t('Unassigned')); ?></option>
+							<?php foreach (($_['officers'] ?? []) as $o): ?>
+								<option value="<?php p($o['uid']); ?>"><?php p($o['uid']); ?></option>
+							<?php endforeach; ?>
+						</select>
+					</dd>
+				</div>
+			</dl>
+			<div class="wc-status-actions" role="group" aria-label="<?php p($l->t('Set status')); ?>" data-wc-status-actions>
+				<?php
+				$statusLabels = [
+					'in_review' => $l->t('In review'),
+					'action_taken' => $l->t('Action taken'),
+					'closed' => $l->t('Closed'),
+					'archived' => $l->t('Archived'),
+				];
+				foreach ($statusLabels as $s => $label): ?>
+					<button type="button" class="wc-btn-secondary" data-wc-status="<?php p($s); ?>" hidden><?php p($label); ?></button>
 				<?php endforeach; ?>
-			</select>
-		</div>
-
-		<div data-wc-contact-block hidden>
-			<h2><?php p($l->t('Contact (self-disclosed)')); ?></h2>
-			<p data-wc-contact></p>
-		</div>
-
-		<p class="wc-locked-note wc-honesty" data-wc-locked-note role="note" hidden></p>
-
-		<h2><?php p($l->t('Messages')); ?></h2>
-		<ul data-wc-messages class="wc-messages"></ul>
-
-		<h2><?php p($l->t('Attachments')); ?></h2>
-		<ul data-wc-attachments></ul>
-
-		<form data-wc-reply-form>
-			<div class="wc-field">
-				<label for="wc-reply"><?php p($l->t('Reply to reporter')); ?></label>
-				<textarea id="wc-reply" name="body" rows="5" required></textarea>
 			</div>
-			<button type="submit" class="wc-btn-primary"><?php p($l->t('Send (encrypted)')); ?></button>
-		</form>
+			<p class="wc-hint" data-wc-status-terminal hidden><?php p($l->t('This case is archived. Its status cannot be changed anymore.')); ?></p>
+			<div class="wc-callout wc-callout--warning" data-wc-close-pending role="status" hidden>
+				<span data-wc-close-pending-text></span>
+			</div>
+			<div class="wc-callout wc-callout--info" data-wc-contact-block role="status" hidden>
+				<strong class="wc-callout__title"><?php p($l->t('Contact (self-disclosed)')); ?></strong>
+				<p data-wc-contact></p>
+			</div>
+			<p class="wc-callout wc-callout--info wc-locked-note" data-wc-locked-note role="status" hidden></p>
+		</section>
+
+		<section class="wc-panel" aria-labelledby="wc-thread-heading">
+			<h2 id="wc-thread-heading"><?php p($l->t('Conversation')); ?></h2>
+			<ul data-wc-messages class="wc-messages"></ul>
+			<h3 class="wc-panel__subtitle"><?php p($l->t('Attachments')); ?></h3>
+			<ul data-wc-attachments></ul>
+			<p class="wc-callout wc-callout--info" data-wc-reply-archived role="status" hidden><?php p($l->t('This case is archived — replies are no longer possible.')); ?></p>
+			<form data-wc-reply-form>
+				<div class="wc-field">
+					<label for="wc-reply"><?php p($l->t('Reply to reporter')); ?></label>
+					<textarea id="wc-reply" name="body" rows="5" required></textarea>
+				</div>
+				<button type="submit" class="wc-btn-primary"><?php p($l->t('Send (encrypted)')); ?></button>
+			</form>
+		</section>
+
+		<section class="wc-panel" aria-labelledby="wc-notes-heading">
+			<h2 id="wc-notes-heading"><?php p($l->t('Internal notes')); ?></h2>
+			<ul data-wc-notes class="wc-notes"></ul>
+			<form data-wc-note-form>
+				<div class="wc-field">
+					<label for="wc-note"><?php p($l->t('New note (encrypted, officers only)')); ?></label>
+					<textarea id="wc-note" name="note" rows="3" required></textarea>
+				</div>
+				<button type="submit" class="wc-btn-secondary"><?php p($l->t('Save note')); ?></button>
+			</form>
+		</section>
 
 		<section class="wc-panel" data-wc-grant hidden aria-labelledby="wc-grant-heading">
 			<h2 id="wc-grant-heading"><?php p($l->t('Grant access')); ?></h2>
 			<p class="wc-hint"><?php p($l->t('These officers can no longer read this case (for example after a key change without re-encryption). Granting re-seals the case key to their current key.')); ?></p>
 			<ul class="wc-grant-list" data-wc-grant-list></ul>
 		</section>
-
-		<h2><?php p($l->t('Internal notes')); ?></h2>
-		<ul data-wc-notes class="wc-notes"></ul>
-		<form data-wc-note-form>
-			<div class="wc-field">
-				<label for="wc-note"><?php p($l->t('New note (encrypted, officers only)')); ?></label>
-				<textarea id="wc-note" name="note" rows="3" required></textarea>
-			</div>
-			<button type="submit" class="wc-btn-secondary"><?php p($l->t('Save note')); ?></button>
-		</form>
 
 		<section class="wc-panel" data-wc-esc hidden aria-labelledby="wc-esc-heading">
 			<h2 id="wc-esc-heading"><?php p($l->t('Escalate to TicketCheck')); ?></h2>
@@ -130,7 +149,7 @@ include __DIR__ . '/common/page-start.php';
 			</form>
 		</section>
 
-		<details>
+		<details class="wc-panel wc-hold">
 			<summary><?php p($l->t('Legal hold')); ?></summary>
 			<form data-wc-hold-form>
 				<label><input type="checkbox" name="hold" value="1"> <?php p($l->t('Pause retention deletion')); ?></label>

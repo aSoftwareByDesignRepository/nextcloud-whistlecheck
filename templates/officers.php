@@ -27,8 +27,11 @@ include __DIR__ . '/common/page-start.php';
 			<button type="button" class="wc-btn-primary" data-wc-genkey><?php p($l->t('Generate my key')); ?></button>
 		</section>
 
-		<h2><?php p($l->t('All officers')); ?></h2>
-		<table class="wc-table">
+		<div class="wc-list-head">
+			<h2 class="wc-list-head__title"><?php p($l->t('All officers')); ?></h2>
+		</div>
+		<div class="wc-table-wrap">
+		<table class="wc-table wc-table--cards">
 			<thead><tr>
 				<th scope="col"><?php p($l->t('User')); ?></th>
 				<th scope="col"><?php p($l->t('Fingerprint')); ?></th>
@@ -37,7 +40,8 @@ include __DIR__ . '/common/page-start.php';
 				<th scope="col"><span class="hidden-visually"><?php p($l->t('Actions')); ?></span></th>
 			</tr></thead>
 			<tbody data-wc-officers aria-busy="true">
-				<tr><td colspan="5" class="wc-loading"><?php p($l->t('Loading…')); ?></td></tr>
+				<tr><td colspan="5"><p class="wc-loading"><?php p($l->t('Loading…')); ?></p></td></tr>
 			</tbody>
 		</table>
+		</div>
 <?php include __DIR__ . '/common/page-end.php'; ?>

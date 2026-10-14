@@ -100,7 +100,7 @@ $headerIconName = (string)($_['wc_header_icon'] ?? ($pageIcons[$pageId] ?? 'shie
 			<?php if ($wcUid !== ''): ?>
 				<div class="wc-scope-strip" aria-label="<?php p($l->t('Signed-in context')); ?>">
 					<span class="wc-scope-strip__name"><?php p($wcUid); ?></span>
-					<span class="wc-scope-strip__badge wc-badge wc-badge--primary"><?php p($l->t('Case officer')); ?></span>
+					<span class="wc-scope-strip__badge wc-badge wc-badge--info"><span class="wc-badge__dot" aria-hidden="true"></span><?php p($l->t('Case officer')); ?></span>
 				</div>
 			<?php endif; ?>
 		</header>

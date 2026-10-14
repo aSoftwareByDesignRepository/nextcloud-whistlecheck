@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no N+1 at 500 cases per officer.
 - `scripts/benchmark-perf.php`: runnable performance evidence harness
   (inbox scale, submission burst, public-form TTFB).
+- Officer surfaces now use the shared Check-app view components: inbox
+  filter panel (search + status + assignment) with live result count, stat
+  tiles, labeled card rows on narrow screens, canonical badges, empty
+  states and a visually-verified audit-chain callout.
+- Case detail: status actions now offer only legal transitions, archived
+  cases explain themselves and lock the reply form instead of failing on
+  submit, and case metadata (received, feedback due, assignee) sits in a
+  summary header.
 
 ### Fixed
 

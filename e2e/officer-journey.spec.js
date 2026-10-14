@@ -134,9 +134,12 @@ test.describe('officer journey: inbox + nav (fresh fixture)', () => {
 			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
 		)
 		expect(overflow).toBeLessThanOrEqual(1)
-		// Card layout active: thead hidden, labeled cells stacked
-		const theadHidden = await page.locator('.wc-table-cards thead').isHidden()
-		expect(theadHidden).toBe(true)
+		// Card layout active: thead is visually clipped (stays in the a11y
+		// tree — canonical transform), cells carry per-cell labels.
+		const thead = page.locator('.wc-table--cards thead')
+		await expect(thead).toHaveCSS('position', 'absolute')
+		const theadBox = await thead.boundingBox()
+		expect(Math.round(theadBox?.width ?? 99)).toBeLessThanOrEqual(1)
 	})
 })
 
@@ -164,11 +167,11 @@ test.describe('officer full journey (fresh fixture)', () => {
 			// Fresh registration — no confirm needed.
 		}
 		// Page reloads after successful registration — wait for our row's
-		// status cell to read 'active', which proves the POST committed AND
+		// status cell to read 'Active', which proves the POST committed AND
 		// the post-reload list fetch rendered (a bare name match resolves on
 		// the pre-reload DOM and lets a report seal to a dying key).
 		const officerRow = page.locator('tbody[data-wc-officers] tr', { hasText: officer.uid })
-		await expect(officerRow).toContainText('active', { timeout: 45000 })
+		await expect(officerRow).toContainText('Active', { timeout: 45000 })
 
 		// ── 2. Anonymous report wraps to the now-active officer ──
 		// Separate anonymous context — the reporter has no session.
@@ -237,7 +240,7 @@ test.describe('re-grant ceremony (fresh fixtures)', () => {
 			await pageA.locator('[data-wc-newpass2]').fill(passA)
 			await pageA.locator('[data-wc-genkey]').click()
 			await expect(pageA.locator('tbody[data-wc-officers] tr', { hasText: officerA.uid }))
-				.toContainText('active', { timeout: 45000 })
+				.toContainText('Active', { timeout: 45000 })
 
 			const ctxB1 = await browser.newContext({ baseURL })
 			const pageB = await ctxB1.newPage()
@@ -247,7 +250,7 @@ test.describe('re-grant ceremony (fresh fixtures)', () => {
 			await pageB.locator('[data-wc-newpass2]').fill(passB1)
 			await pageB.locator('[data-wc-genkey]').click()
 			await expect(pageB.locator('tbody[data-wc-officers] tr', { hasText: officerB.uid }))
-				.toContainText('active', { timeout: 45000 })
+				.toContainText('Active', { timeout: 45000 })
 
 			// Anonymous report wraps to BOTH active officers.
 			const pubCtx = await browser.newContext({ baseURL })
@@ -271,7 +274,7 @@ test.describe('re-grant ceremony (fresh fixtures)', () => {
 			await pageB2.locator('[data-wc-genkey]').click()
 			await expect(pageB2.locator('[data-wc-keyreg-err]')).toBeVisible({ timeout: 15000 })
 			// Wait for the rotation commit, not the row status: B is already
-			// 'active' pre-rotation, so a status assertion resolves spuriously
+			// 'Active' pre-rotation, so a status assertion resolves spuriously
 			// and navigating away mid-POST aborts the post-commit handler
 			// (sessSet + reload) — a lost session passphrase, not a server bug.
 			const rotResp = pageB2.waitForResponse(

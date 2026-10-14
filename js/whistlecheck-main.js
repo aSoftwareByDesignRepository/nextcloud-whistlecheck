@@ -216,17 +216,123 @@
 		}
 	}
 
+	// Canonical status pill — wc-badge variant per state (dot + text, never
+	// colour alone). Mirrors CaseService::STATUS.
+	const STATUS_VARIANT = { received: 'info', in_review: 'warning', action_taken: 'success' };
+	function paintStatusBadge(el, status) {
+		const v = STATUS_VARIANT[status];
+		el.className = 'wc-badge' + (v ? ' wc-badge--' + v : '');
+		el.innerHTML = '';
+		const dot = document.createElement('span');
+		dot.className = 'wc-badge__dot';
+		dot.setAttribute('aria-hidden', 'true');
+		el.appendChild(dot);
+		el.appendChild(document.createTextNode(t('status_' + status, status)));
+	}
+	function badgeEl(kind, text) {
+		const b = document.createElement('span');
+		b.className = 'wc-badge' + (kind ? ' wc-badge--' + kind : '');
+		const dot = document.createElement('span');
+		dot.className = 'wc-badge__dot';
+		dot.setAttribute('aria-hidden', 'true');
+		b.appendChild(dot);
+		b.appendChild(document.createTextNode(text));
+		return b;
+	}
+
 	// ── inbox ────────────────────────────────────────────────────────────
 
 	// Latest initInbox call wins: the unlock-triggered re-render must not be
 	// overwritten by an older in-flight fetch resolving after it.
 	let inboxSeq = 0;
+	// Fetched rows + decrypted titles cached per load so filtering never
+	// re-hits the API or re-runs crypto.
+	let inboxCases = [];
+	let inboxPriv = null;
+	let inboxMyPub = null;
+	const inboxFilter = { q: '', status: '', mine: '' };
+
+	function inboxMatches(c, me) {
+		if (inboxFilter.status && c.status !== inboxFilter.status) return false;
+		if (inboxFilter.mine === '1' && c.assigned_to !== me) return false;
+		if (inboxFilter.q) {
+			const hay = (c._title || '') + ' #' + c.id;
+			if (hay.toLowerCase().indexOf(inboxFilter.q) < 0) return false;
+		}
+		return true;
+	}
+
+	function renderInbox(root, tbody, me) {
+		const rows = inboxCases.filter((c) => inboxMatches(c, me));
+		const countEl = root.querySelector('[data-wc-inbox-count]');
+		if (countEl) {
+			countEl.textContent = rows.length === inboxCases.length
+				? t('count_cases', '{n} cases').replace('{n}', String(rows.length))
+				: t('count_cases_of', '{n} of {m} cases').replace('{n}', String(rows.length)).replace('{m}', String(inboxCases.length));
+		}
+		tbody.innerHTML = '';
+		if (rows.length === 0) {
+			const tr = document.createElement('tr');
+			const td = document.createElement('td');
+			td.colSpan = 5;
+			const empty = document.createElement('div');
+			empty.className = 'wc-empty-state';
+			const h = document.createElement('p');
+			h.className = 'wc-empty-state__title';
+			h.textContent = inboxCases.length === 0
+				? t('inbox_empty_title', 'No cases yet.')
+				: t('inbox_empty_filtered', 'No cases match the filter.');
+			const p = document.createElement('p');
+			p.className = 'wc-empty-state__text';
+			p.textContent = inboxCases.length === 0
+				? t('inbox_empty_text', 'New reports appear here as soon as they are submitted.')
+				: t('inbox_empty_filtered_hint', 'Clear the filter to see all cases again.');
+			empty.append(h, p);
+			td.appendChild(empty);
+			tr.appendChild(td);
+			tbody.appendChild(tr);
+			return;
+		}
+		for (const c of rows) {
+			tbody.appendChild(inboxRow(c));
+		}
+	}
+
+	function renderInboxStats(root, me) {
+		const strip = root.querySelector('[data-wc-inbox-stats]');
+		if (!strip) return;
+		const open = inboxCases.filter((c) => c.status !== 'closed' && c.status !== 'archived').length;
+		const overdue = inboxCases.filter((c) => !!c.overdue).length;
+		const mine = inboxCases.filter((c) => c.assigned_to === me).length;
+		const set = (sel, v) => { const el = strip.querySelector(sel); if (el) el.textContent = String(v); };
+		set('[data-wc-stat-open]', open);
+		set('[data-wc-stat-overdue]', overdue);
+		set('[data-wc-stat-mine]', mine);
+		strip.hidden = false;
+	}
 
 	async function initInbox(root) {
 		const tbody = root.querySelector('[data-wc-inbox]');
 		if (!tbody) return;
 		const seq = ++inboxSeq;
 		const me = boot().wcUid;
+
+		const filterForm = root.querySelector('[data-wc-inbox-filter]');
+		if (filterForm && !filterForm.dataset.wcBound) {
+			filterForm.dataset.wcBound = '1';
+			const apply = (v) => {
+				inboxFilter.q = (v.q || '').trim().toLowerCase();
+				inboxFilter.status = v.status || '';
+				inboxFilter.mine = v.mine || '';
+				renderInbox(root, tbody, me);
+			};
+			if (window.CheckViewComponents) {
+				window.CheckViewComponents.bindListFilter(filterForm, apply);
+			} else {
+				// Fallback: plain submit/change without the shared helper.
+				filterForm.addEventListener('submit', (e) => { e.preventDefault(); apply(Object.fromEntries(new FormData(filterForm))); });
+			}
+		}
 
 		// Never block the list on the unlock prompt: try the session-cached
 		// passphrase silently; otherwise show the panel and re-render titles
@@ -258,21 +364,18 @@
 		try {
 			const data = await api('/api/inbox');
 			if (seq !== inboxSeq) return;
-			tbody.innerHTML = '';
-			tbody.removeAttribute('aria-busy');
 			const myPub = priv ? await pubKey(me) : null;
-			for (const c of (data.cases || [])) {
+			inboxPriv = priv;
+			inboxMyPub = myPub;
+			inboxCases = data.cases || [];
+			// Decrypt titles once per fetch so filtering is a pure re-render.
+			for (const c of inboxCases) {
 				if (seq !== inboxSeq) return;
-				tbody.appendChild(await inboxRow(c, priv, myPub));
+				c._title = await inboxTitle(c, priv, myPub);
 			}
-			if (!data.cases || data.cases.length === 0) {
-				const tr = document.createElement('tr');
-				const td = document.createElement('td');
-				td.colSpan = 5;
-				td.textContent = t('inbox_empty', 'No cases yet.');
-				tr.appendChild(td);
-				tbody.appendChild(tr);
-			}
+			tbody.removeAttribute('aria-busy');
+			renderInboxStats(root, me);
+			renderInbox(root, tbody, me);
 			const trunc = root.querySelector('[data-wc-truncated]');
 			if (trunc) trunc.hidden = !data.truncated;
 		} catch (e) {
@@ -280,13 +383,7 @@
 		}
 	}
 
-	async function inboxRow(c, priv, myPub) {
-		const tr = document.createElement('tr');
-		tr.dataset.caseId = c.id;
-
-		const titleTd = document.createElement('td');
-		titleTd.className = 'wc-col-title';
-		titleTd.dataset.label = t('col_case', 'Case');
+	async function inboxTitle(c, priv, myPub) {
 		let title = t('case_fallback_title', 'Case #') + c.id;
 		if (priv && c.wrap && c.title_cipher && myPub) {
 			const key = await window.WcCrypto.openSealed(c.wrap, myPub, priv);
@@ -297,6 +394,17 @@
 		} else if (!c.wrap || !priv) {
 			title += ' — ' + t('locked', 'locked');
 		}
+		return title;
+	}
+
+	function inboxRow(c) {
+		const tr = document.createElement('tr');
+		tr.dataset.caseId = c.id;
+
+		const titleTd = document.createElement('td');
+		titleTd.className = 'wc-col-title';
+		titleTd.dataset.cell = t('col_case', 'Case');
+		const title = c._title || (t('case_fallback_title', 'Case #') + c.id);
 		// A real anchor in the title cell carries the native semantics
 		// (keyboard activation, open-in-new-tab, screen-reader "link") while
 		// the row click stays a pointer convenience — no fake role on <tr>.
@@ -308,32 +416,30 @@
 		tr.appendChild(titleTd);
 
 		const statusTd = document.createElement('td');
-		statusTd.dataset.label = t('col_status', 'Status');
-		const badge = document.createElement('span');
-		badge.className = 'wc-status wc-status-' + c.status;
-		badge.textContent = t('status_' + c.status, c.status);
+		statusTd.dataset.cell = t('col_status', 'Status');
+		const badge = badgeEl('', '');
+		paintStatusBadge(badge, c.status);
 		statusTd.appendChild(badge);
 		if (c.overdue) {
-			const o = document.createElement('span');
-			o.className = 'wc-badge-overdue';
-			o.textContent = ' ' + t('overdue', 'OVERDUE');
+			const o = badgeEl('danger', t('overdue', 'OVERDUE'));
+			o.classList.add('wc-badge-overdue');
 			statusTd.appendChild(o);
 		}
 		tr.appendChild(statusTd);
 
 		const dueTd = document.createElement('td');
-		dueTd.dataset.label = t('col_due', 'Feedback due');
+		dueTd.dataset.cell = t('col_due', 'Feedback due');
 		const due = c.feedback_due ?? '—';
 		dueTd.textContent = due + (c.days_until_due !== null && c.days_until_due !== undefined ? ' (' + c.days_until_due + 'd)' : '');
 		tr.appendChild(dueTd);
 
 		const recvTd = document.createElement('td');
-		recvTd.dataset.label = t('col_received', 'Received');
+		recvTd.dataset.cell = t('col_received', 'Received');
 		recvTd.textContent = String(c.received_at || '—').slice(0, 10);
 		tr.appendChild(recvTd);
 
 		const assTd = document.createElement('td');
-		assTd.dataset.label = t('col_assigned', 'Assigned');
+		assTd.dataset.cell = t('col_assigned', 'Assigned');
 		assTd.textContent = c.assigned_to || '—';
 		tr.appendChild(assTd);
 
@@ -347,6 +453,51 @@
 	}
 
 	// ── case view ────────────────────────────────────────────────────────
+
+	// Mirrors CaseService::TRANSITIONS — the server stays authoritative;
+	// this only hides buttons that can never succeed.
+	const CASE_TRANSITIONS = {
+		received: ['in_review', 'closed', 'archived'],
+		in_review: ['action_taken', 'closed', 'archived'],
+		action_taken: ['closed', 'archived'],
+		closed: ['in_review', 'archived'],
+		archived: [],
+	};
+
+	function renderStatusControls(root, status) {
+		const group = root.querySelector('[data-wc-status-actions]');
+		if (!group) return;
+		const legal = CASE_TRANSITIONS[status] || [];
+		let shown = 0;
+		group.querySelectorAll('[data-wc-status]').forEach((btn) => {
+			const show = legal.includes(btn.dataset.wcStatus);
+			btn.hidden = !show;
+			if (show) shown++;
+		});
+		group.hidden = shown === 0;
+		const terminal = root.querySelector('[data-wc-status-terminal]');
+		if (terminal) terminal.hidden = shown !== 0;
+		// Archived is read-only server-side (reply → 409). Archive is terminal,
+		// so this only ever *adds* the lock — never re-enables — which keeps
+		// it safe to run before decryption wired the forms.
+		if (status === 'archived') {
+			const hint = root.querySelector('[data-wc-reply-archived]');
+			if (hint) hint.hidden = false;
+			const replyForm = root.querySelector('[data-wc-reply-form]');
+			if (replyForm) replyForm.querySelectorAll('textarea, [type=submit]').forEach((el) => { el.disabled = true; });
+		}
+	}
+
+	function renderCaseMeta(root, data) {
+		const recv = root.querySelector('[data-wc-meta-received]');
+		if (recv) recv.textContent = String(data.received_at || '—').slice(0, 10);
+		const due = root.querySelector('[data-wc-meta-due]');
+		if (due) due.textContent = data.feedback_due || '—';
+		const terminal = data.status === 'closed' || data.status === 'archived';
+		const overdue = !terminal && data.feedback_due && data.feedback_due < new Date().toISOString().slice(0, 10);
+		const odBadge = root.querySelector('[data-wc-overdue-badge]');
+		if (odBadge) odBadge.hidden = !overdue;
+	}
 
 	async function initCase(root) {
 		const caseId = parseInt(root.dataset.wcCaseId, 10);
@@ -384,9 +535,11 @@
 		initEscalation(root, caseId, data);
 		// Plaintext chrome renders immediately — it doesn't need the key.
 		const badge = root.querySelector('[data-wc-status-badge]');
-		if (badge) { badge.textContent = t('status_' + data.status, data.status); badge.className = 'wc-status wc-status-' + data.status; }
+		if (badge) paintStatusBadge(badge, data.status);
 		const assignSel = root.querySelector('[data-wc-assign]');
 		if (assignSel) assignSel.value = data.assigned_to || '';
+		renderCaseMeta(root, data);
+		renderStatusControls(root, data.status);
 		bindMetaActions(root, data, me);
 
 		// Locked-content note — rendered up front so an officer who never
@@ -613,7 +766,9 @@
 					const res = await api('/api/cases/' + data.id + '/status', { method: 'PUT', body: { status: btn.dataset.wcStatus, revision: revision() } });
 					refreshRev(res);
 					const badge = root.querySelector('[data-wc-status-badge]');
-					if (badge) { badge.textContent = t('status_' + res.status, res.status); badge.className = 'wc-status wc-status-' + res.status; }
+					if (badge) paintStatusBadge(badge, res.status);
+					renderCaseMeta(root, Object.assign({}, data, { status: res.status }));
+					renderStatusControls(root, res.status);
 					renderClosePending(root, res.close_requested_by, res.close_requested_to, me);
 					toast('success', res.close_requested_by ? t('close_pending_toast', 'Request recorded — a second officer must confirm.') : t('status_saved', 'Status updated.'));
 				} catch (e) {
@@ -914,14 +1069,47 @@
 			const data = await api('/api/officers');
 			list.innerHTML = '';
 			list.removeAttribute('aria-busy');
-			for (const o of (data.officers || [])) {
+			const officers = data.officers || [];
+			if (officers.length === 0) {
 				const tr = document.createElement('tr');
-				['uid', 'fingerprint', 'status', 'key_version'].forEach((k) => {
-					const td = document.createElement('td');
-					td.textContent = k === 'fingerprint' ? String(o[k]).slice(0, 16) + '…' : String(o[k] ?? '');
-					tr.appendChild(td);
-				});
 				const td = document.createElement('td');
+				td.colSpan = 5;
+				td.textContent = t('officers_empty', 'No officers yet.');
+				tr.appendChild(td);
+				list.appendChild(tr);
+				return;
+			}
+			const colLabels = [t('col_user', 'User'), t('col_fingerprint', 'Fingerprint'), t('col_status', 'Status'), t('col_keyver', 'Key version')];
+			for (const o of officers) {
+				const tr = document.createElement('tr');
+				// user cell: uid + "You" marker for the current officer
+				const uidTd = document.createElement('td');
+				uidTd.dataset.cell = colLabels[0];
+				uidTd.appendChild(document.createTextNode(String(o.uid)));
+				if (o.uid === me) {
+					uidTd.appendChild(document.createTextNode(' '));
+					uidTd.appendChild(badgeEl('info', t('you', 'You')));
+				}
+				tr.appendChild(uidTd);
+				const fpTd = document.createElement('td');
+				fpTd.dataset.cell = colLabels[1];
+				const code = document.createElement('code');
+				code.className = 'wc-fp';
+				code.textContent = String(o.fingerprint).slice(0, 16) + '…';
+				code.title = String(o.fingerprint);
+				fpTd.appendChild(code);
+				tr.appendChild(fpTd);
+				const stTd = document.createElement('td');
+				stTd.dataset.cell = colLabels[2];
+				stTd.appendChild(badgeEl(o.status === 'active' ? 'success' : 'danger',
+					o.status === 'active' ? t('active', 'Active') : t('status_revoked', 'Revoked')));
+				tr.appendChild(stTd);
+				const kvTd = document.createElement('td');
+				kvTd.dataset.cell = colLabels[3];
+				kvTd.textContent = String(o.key_version ?? '');
+				tr.appendChild(kvTd);
+				const td = document.createElement('td');
+				td.dataset.cell = t('col_actions', 'Actions');
 				if (o.status === 'active' && o.uid !== me) {
 					const btn = document.createElement('button');
 					btn.type = 'button';
@@ -993,12 +1181,30 @@
 				const data = await api('/api/categories');
 				list.innerHTML = '';
 				list.removeAttribute('aria-busy');
-				for (const c of (data.categories || [])) {
+				const cats = data.categories || [];
+				if (cats.length === 0) {
 					const tr = document.createElement('tr');
-					const lde = document.createElement('td'); lde.textContent = c.label.de || '';
-					const len = document.createElement('td'); len.textContent = c.label.en || '';
-					const st = document.createElement('td'); st.textContent = c.archived ? t('archived', 'archived') : t('active', 'active');
+					const td = document.createElement('td');
+					td.colSpan = 4;
+					const empty = document.createElement('div');
+					empty.className = 'wc-empty-state';
+					const p = document.createElement('p');
+					p.className = 'wc-empty-state__text';
+					p.textContent = t('cats_empty', 'No categories yet — add the first one below.');
+					empty.appendChild(p);
+					td.appendChild(empty);
+					tr.appendChild(td);
+					list.appendChild(tr);
+					return;
+				}
+				const catCols = [t('col_label_de', 'Label (German)'), t('col_label_en', 'Label (English)'), t('col_status', 'Status')];
+				for (const c of cats) {
+					const tr = document.createElement('tr');
+					const lde = document.createElement('td'); lde.dataset.cell = catCols[0]; lde.textContent = c.label.de || '';
+					const len = document.createElement('td'); len.dataset.cell = catCols[1]; len.textContent = c.label.en || '';
+					const st = document.createElement('td'); st.dataset.cell = catCols[2]; st.textContent = c.archived ? t('archived', 'archived') : t('active', 'active');
 					const act = document.createElement('td');
+					act.dataset.cell = t('col_actions', 'Actions');
 					if (!c.archived) {
 						const b = document.createElement('button');
 						b.type = 'button';
@@ -1054,17 +1260,33 @@
 		if (!tbody) return;
 		try {
 			const data = await api('/api/audit');
-			const badge = root.querySelector('[data-wc-chain]');
-			if (badge) {
-				badge.textContent = data.chain_ok ? t('chain_ok', 'Chain intact') : t('chain_broken', 'CHAIN BROKEN');
-				badge.classList.add(data.chain_ok ? 'wc-ok' : 'wc-bad');
+			const chainBox = root.querySelector('[data-wc-chain]');
+			if (chainBox) {
+				chainBox.innerHTML = '';
+				chainBox.classList.remove('wc-callout--success', 'wc-callout--danger');
+				chainBox.classList.add(data.chain_ok ? 'wc-callout--success' : 'wc-callout--danger');
+				const title = document.createElement('strong');
+				title.className = 'wc-callout__title';
+				title.textContent = data.chain_ok ? t('chain_ok', 'Chain intact') : t('chain_broken', 'CHAIN BROKEN');
+				const txt = document.createElement('p');
+				txt.textContent = data.chain_ok
+					? t('chain_ok_text', 'All recorded events form an unbroken chain.')
+					: t('chain_broken_text', 'The audit chain is broken — treat this log as untrusted and investigate before relying on it.');
+				chainBox.append(title, txt);
+			}
+			const events = data.events || [];
+			const countEl = root.querySelector('[data-wc-audit-count]');
+			if (countEl) {
+				countEl.textContent = t('audit_entries', '{n} entries').replace('{n}', String(events.length));
 			}
 			tbody.innerHTML = '';
 			tbody.removeAttribute('aria-busy');
-			for (const e of (data.events || [])) {
+			const auditCols = ['#', t('col_event', 'Event'), t('col_actor', 'Actor'), t('col_case', 'Case'), t('col_time', 'Time')];
+			for (const e of events) {
 				const tr = document.createElement('tr');
-				[e.seq, e.event, e.actor || '—', e.case_id ?? '—', e.at].forEach((v) => {
+				[e.seq, e.event, e.actor || '—', e.case_id ?? '—', e.at].forEach((v, i) => {
 					const td = document.createElement('td');
+					td.dataset.cell = auditCols[i];
 					td.textContent = String(v);
 					tr.appendChild(td);
 				});
@@ -1086,18 +1308,24 @@
 			if (body) body.removeAttribute('aria-busy');
 			root.querySelector('[data-wc-total]').textContent = data.total;
 			root.querySelector('[data-wc-overdue]').textContent = data.overdue;
+			const openEl = root.querySelector('[data-wc-open]');
+			if (openEl) {
+				const bs = data.by_status || {};
+				openEl.textContent = String(
+					(bs.received || 0) + (bs.in_review || 0) + (bs.action_taken || 0));
+			}
 			const tbody = root.querySelector('[data-wc-statstatus]');
 			if (tbody) Object.keys(data.by_status || {}).forEach((s) => {
 				const tr = document.createElement('tr');
-				const a = document.createElement('td'); a.textContent = t('status_' + s, s);
-				const b = document.createElement('td'); b.textContent = data.by_status[s];
+				const a = document.createElement('td'); a.dataset.cell = t('col_status', 'Status'); a.textContent = t('status_' + s, s);
+				const b = document.createElement('td'); b.dataset.cell = t('col_count', 'Count'); b.textContent = data.by_status[s];
 				tr.append(a, b); tbody.appendChild(tr);
 			});
 			const cat = root.querySelector('[data-wc-statcat]');
 			if (cat) for (const c of (data.by_category || [])) {
 				const tr = document.createElement('tr');
-				const a = document.createElement('td'); a.textContent = c.label.en || c.label.de || ('#' + c.id);
-				const b = document.createElement('td');
+				const a = document.createElement('td'); a.dataset.cell = t('col_category', 'Category'); a.textContent = c.label.en || c.label.de || ('#' + c.id);
+				const b = document.createElement('td'); b.dataset.cell = t('col_count', 'Count');
 				b.textContent = c.count === null ? '< ' + data.small_cell_floor : c.count; // small-cell suppression
 				tr.append(a, b); cat.appendChild(tr);
 			}
@@ -1152,6 +1380,8 @@
 			settings: initSettings, categories: initCategories, audit: initAudit,
 			stats: initStats, verbal: initVerbal,
 		}[page];
-		if (init) init(root).catch((e) => toast('error', e.message || 'error'));
+		// Promise.resolve: initSettings is sync — a bare .catch on its
+		// undefined return throws a pageerror on every settings load.
+		if (init) Promise.resolve(init(root)).catch((e) => toast('error', e.message || 'error'));
 	});
 })();

@@ -120,7 +120,9 @@ class PageController extends Controller
 		Util::addScript('whistlecheck', 'common/wc-crypto');
 		Util::addScript('whistlecheck', 'common/field-errors');
 		Util::addScript('whistlecheck', 'common/mobile-nav');
+		Util::addScript('whistlecheck', 'common/view-components');
 		Util::addScript('whistlecheck', 'whistlecheck-main');
+		Util::addStyle('whistlecheck', 'common/view-components');
 		Util::addStyle('whistlecheck', 'app');
 		$res = new TemplateResponse('whistlecheck', $template, array_merge([
 			'urlGenerator' => $this->urlGenerator,
@@ -152,7 +154,6 @@ class PageController extends Controller
 			'status_closed' => $this->l->t('Closed'),
 			'status_archived' => $this->l->t('Archived'),
 			'overdue' => $this->l->t('OVERDUE'),
-			'inbox_empty' => $this->l->t('No cases yet.'),
 			'case_fallback_title' => $this->l->t('Case #'),
 			'case_locked' => $this->l->t('Unlock your key to read this case.'),
 			'case_locked_note' => $this->l->t('Case contents are locked — unlock your key above to read them.'),
@@ -188,6 +189,18 @@ class PageController extends Controller
 			'col_due' => $this->l->t('Feedback due'),
 			'col_received' => $this->l->t('Received'),
 			'col_assigned' => $this->l->t('Assigned'),
+			'col_actions' => $this->l->t('Actions'),
+			'col_user' => $this->l->t('User'),
+			'col_fingerprint' => $this->l->t('Fingerprint'),
+			'col_keyver' => $this->l->t('Key version'),
+			'col_event' => $this->l->t('Event'),
+			'col_actor' => $this->l->t('Actor'),
+			'col_time' => $this->l->t('Time'),
+			'col_count' => $this->l->t('Count'),
+			'col_category' => $this->l->t('Category'),
+			'col_label_de' => $this->l->t('Label (German)'),
+			'col_label_en' => $this->l->t('Label (English)'),
+			'status_revoked' => $this->l->t('Revoked'),
 			'confirm_revoke' => $this->l->t('Revoke this officer? You will re-wrap all cases afterwards.'),
 			'key_saved' => $this->l->t('Key registered. Keep your passphrase safe.'),
 			'status_saved' => $this->l->t('Status updated.'),
@@ -210,6 +223,22 @@ class PageController extends Controller
 			'esc_by' => $this->l->t('by'),
 			'esc_created' => $this->l->t('Ticket created.'),
 			'esc_replayed' => $this->l->t('This export was already sent.'),
+			// Inbox filter + stats + list-head
+			'count_cases' => $this->l->t('{n} cases'),
+			'count_cases_of' => $this->l->t('{n} of {m} cases'),
+			'inbox_empty_title' => $this->l->t('No cases yet.'),
+			'inbox_empty_text' => $this->l->t('New reports appear here as soon as they are submitted.'),
+			'inbox_empty_filtered' => $this->l->t('No cases match the filter.'),
+			'inbox_empty_filtered_hint' => $this->l->t('Clear the filter to see all cases again.'),
+			// Audit page
+			'chain_ok_text' => $this->l->t('All recorded events form an unbroken chain.'),
+			'chain_broken_text' => $this->l->t('The audit chain is broken — treat this log as untrusted and investigate before relying on it.'),
+			'audit_entries' => $this->l->t('{n} entries'),
+			// Officers
+			'you' => $this->l->t('You'),
+			'officers_empty' => $this->l->t('No officers yet.'),
+			// Settings / categories
+			'cats_empty' => $this->l->t('No categories yet — add the first one below.'),
 		];
 	}
 

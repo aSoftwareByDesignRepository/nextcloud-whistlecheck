@@ -253,7 +253,13 @@
 	padding: 0;
 	font-size: var(--wc-fs-sm);
 }
-.wc-breadcrumb a { color: var(--wc-muted); text-decoration: none; }
+.wc-breadcrumb a {
+	color: var(--wc-muted);
+	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	min-height: 24px; /* WCAG 2.5.8 — atlas a11y-dom gate */
+}
 .wc-breadcrumb a:hover { color: var(--wc-text); text-decoration: underline; }
 .wc-breadcrumb__sep { color: var(--wc-muted); }
 .wc-breadcrumb__current { color: var(--wc-text); font-weight: 600; }
@@ -310,68 +316,10 @@
 .wc-scope-strip__name { font-weight: 600; }
 
 /* ── Badges / status pills (label + dot — colour is never the only cue) ── */
-.wc-badge {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	padding: 0.15rem 0.55rem;
-	min-height: 1.5rem;
-	border-radius: var(--wc-radius-pill);
-	font-size: var(--wc-fs-xs);
-	font-weight: 600;
-	background: var(--color-background-hover);
-	color: var(--wc-text);
-}
-.wc-badge::before {
-	content: '';
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	background: currentColor;
-}
-/* --color-primary-element is a fill colour — as text on --wc-tint-info it can
-   miss AA under dark themes (4.41 < 4.5). Main text + primary dot/border keeps
-   the hue cue AA-safe (same fix as budgetcheck's primary summary tiles). */
-.wc-badge--primary { background: var(--wc-tint-info); color: var(--wc-text); }
-.wc-badge--primary::before { background: var(--color-primary-element); }
-.wc-badge--success { background: var(--wc-tint-success); color: var(--color-success-text); }
-.wc-badge--warning { background: var(--wc-tint-warning); color: var(--color-warning-text); }
-.wc-badge--danger  { background: var(--wc-tint-danger);  color: var(--color-error-text); }
-
-.wc-status {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	padding: 2px 10px;
-	border-radius: var(--wc-radius-pill);
-	border: 1px solid var(--wc-border-strong);
-	font-size: 0.9em;
-	font-weight: 600;
-}
-.wc-status::before {
-	content: '';
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	background: currentColor;
-}
-.wc-status-received   { background: var(--wc-tint-info);    border-color: var(--color-primary-element); color: var(--wc-text); }
-.wc-status-received::before { background: var(--color-primary-element); }
-.wc-status-in_review  { background: var(--wc-tint-warning); border-color: var(--color-warning-text);    color: var(--color-warning-text); }
-.wc-status-action_taken { background: var(--wc-tint-success); border-color: var(--color-success-text);  color: var(--color-success-text); }
-.wc-status-closed, .wc-status-archived { background: var(--color-background-hover); color: var(--wc-muted); }
-.wc-badge-overdue {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	margin-inline-start: 6px;
-	padding: 2px 8px;
-	font-size: 0.85em;
-	font-weight: 700;
-	border-radius: var(--wc-radius-sm);
-	background: var(--wc-tint-danger);
-	color: var(--color-error-text);
-}
+/* Canonical .wc-badge / .wc-badge__dot / --success|--warning|--danger|--info
+   live in css/common/view-components.css (synced — do not re-declare).
+   Case status maps onto badge variants in whistlecheck-main.js. */
+.wc-badge-overdue { margin-inline-start: 6px; }
 
 /* ── Tables ────────────────────────────────────────────────────────────── */
 .wc-table {
@@ -442,7 +390,13 @@
 .wc-warn a { color: var(--color-main-text); }
 .wc-hint a,
 .wc-honesty a,
-.wc-warn a { text-decoration: underline; text-underline-offset: 2px; }
+.wc-warn a {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	display: inline-flex;
+	align-items: center;
+	min-height: 24px; /* WCAG 2.5.8 — inline links stay ≥24px tall */
+}
 
 /* ── Callouts (accent border + tinted fill, main ink stays) ────────────── */
 .wc-honesty, .wc-warn {
@@ -513,8 +467,6 @@
 .wc-app .wc-btn-inline { min-height: 36px; padding: 0 14px; width: auto !important; }
 .wc-app a.wc-btn-primary, .wc-app a.wc-btn-secondary { text-decoration: none; }
 
-.wc-status-actions { display: flex; flex-wrap: wrap; gap: var(--wc-space-2); margin: var(--wc-space-3) 0 var(--wc-space-5); }
-
 /* ── Cards / panels ────────────────────────────────────────────────────── */
 .wc-panel {
 	background: var(--wc-bg-card);
@@ -525,40 +477,31 @@
 	margin: var(--wc-space-4) 0;
 }
 
-/* ── Stat tiles ────────────────────────────────────────────────────────── */
-.wc-stat-strip {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
-	gap: var(--wc-space-4);
-	margin: 0 0 var(--wc-space-5);
-}
-.wc-stat-tile {
-	background: var(--wc-bg-card);
-	border: 1px solid var(--wc-border);
-	border-inline-start: 3px solid var(--wc-border-strong);
-	border-radius: var(--wc-radius-md);
-	box-shadow: var(--wc-shadow-sm);
-	padding: var(--wc-space-4);
+/* ── Stat tiles / filter panel / list-head / empty-state / card tables ── */
+/* Canonical implementations live in css/common/view-components.css
+   (synced from apps/_shared/view-components — do not re-declare here). */
+
+/* ── Case hero ─────────────────────────────────────────────────────────── */
+.wc-case-hero__status { display: flex; align-items: center; gap: var(--wc-space-2); margin: 0 0 var(--wc-space-3); }
+.wc-case-hero__status .wc-badge { font-size: var(--wc-fs-sm); padding: 4px var(--wc-space-3); }
+.wc-case-meta {
 	display: flex;
-	flex-direction: column;
-	gap: var(--wc-space-1);
+	flex-wrap: wrap;
+	gap: var(--wc-space-3) var(--wc-space-6);
+	margin: 0 0 var(--wc-space-4);
 }
-.wc-stat-tile--primary { border-inline-start-color: var(--color-primary-element); }
-.wc-stat-tile--danger  { border-inline-start-color: var(--color-error-text); }
-.wc-stat-tile__label {
+.wc-case-meta__item { display: flex; flex-direction: column; gap: 2px; }
+.wc-case-meta__item dt {
 	font-size: var(--wc-fs-xs);
 	font-weight: 700;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	color: var(--wc-muted);
 }
-.wc-stat-tile__value {
-	font-size: clamp(1.25rem, 2vw, 1.6rem);
-	font-weight: 700;
-	font-variant-numeric: var(--wc-tab-num);
-	line-height: var(--wc-line-tight);
-}
-.wc-stat-tile__meta { font-size: var(--wc-fs-xs); color: var(--wc-muted); }
+.wc-case-meta__item dd { margin: 0; font-variant-numeric: var(--wc-tab-num); }
+.wc-case-meta__item select { min-height: 40px; }
+.wc-status-actions { display: flex; flex-wrap: wrap; gap: var(--wc-space-2); }
+.wc-panel__subtitle { font-size: var(--wc-fs-md); margin: var(--wc-space-4) 0 var(--wc-space-2); }
 
 /* ── In-page section chips (settings sections) ─────────────────────────── */
 .wc-subnav {
@@ -604,12 +547,22 @@
 	font-family: monospace;
 	word-break: break-all;
 }
-/* --color-success/--color-error are theme *tints* (light fills) — as text they
-   fail WCAG 1.4.3. Theming ships matching *-text inks that stay AA in every
-   theme; always pair tint backgrounds with their -text ink. */
-.wc-ok { color: var(--color-success-text); }
-.wc-bad { color: var(--color-error-text); }
 .wc-attachment { min-height: 44px; }
+
+/* Checkbox row inside filter panels (canonical .wc-checkbox-row — the
+   form-controls module that styles it is not synced here). */
+.wc-checkbox-row {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--wc-space-2);
+	min-height: 44px;
+	font-weight: 400;
+	cursor: pointer;
+}
+.wc-checkbox-row input { min-height: 0; width: auto; accent-color: var(--color-primary-element); }
+
+/* Fingerprint column — monospaced, muted, truncated */
+.wc-fp { font-family: monospace; font-size: var(--wc-fs-sm); color: var(--wc-muted); }
 
 /* ── Toasts (kind+text dedup, timer reset, role=alert/status via JS) ───── */
 #wc-toasts {
@@ -653,15 +606,6 @@
 	.wc-app *, .wc-public * { transition: none !important; animation: none !important; }
 }
 
-.wc-pending-close {
-	background: var(--wc-tint-warning);
-	color: var(--color-warning-text);
-	border-radius: var(--wc-radius-sm);
-	border-inline-start: 4px solid var(--color-warning-text);
-	padding: var(--wc-space-3) var(--wc-space-4);
-	font-weight: 600;
-}
-
 /* ── Bachus UX pass: unlock panel, load states, responsive cards ── */
 
 .wc-unlock {
@@ -671,11 +615,6 @@
 .wc-unlock h2 { margin-top: 0; }
 .wc-unlock .wc-btn-primary { width: 100%; }
 
-.wc-loading {
-	padding: var(--wc-space-5) var(--wc-space-3);
-	color: var(--wc-muted);
-	font-style: italic;
-}
 .wc-load-error {
 	padding: var(--wc-space-4);
 	color: var(--color-error-text);
@@ -701,8 +640,8 @@
 	color: var(--color-main-text);
 	font-weight: 600;
 }
-.wc-table-cards tr { cursor: pointer; }
-.wc-table-cards td:has(a.wc-case-link) { cursor: default; }
+.wc-table--cards tr { cursor: pointer; }
+.wc-table--cards td:has(a.wc-case-link) { cursor: default; }
 
 /* ≤768px (design-system breakpoint-md: phone → tablet): inbox table becomes
  * labeled cards, buttons go full-width, non-card tables scroll in place,
@@ -714,47 +653,24 @@
 	.wc-page-header__icon .wc-icon { width: 24px; height: 24px; }
 	.wc-page-header__actions { grid-column: 1 / -1; justify-content: flex-start; }
 	.wc-page-header__text h1 { font-size: var(--wc-fs-xl); }
-	.wc-table:not(.wc-table-cards) { display: block; overflow-x: auto; }
+	.wc-table:not(.wc-table--cards) { display: block; overflow-x: auto; }
 	.wc-msg { max-width: 100%; }
 	.wc-app .wc-btn-primary, .wc-app .wc-btn-secondary, .wc-app .wc-btn-danger { width: 100%; }
 	.wc-app .wc-btn-inline { min-height: 44px; }
 	.wc-subnav a { min-height: 44px; }
-	.wc-table-cards thead { display: none; }
-	.wc-table-cards, .wc-table-cards tbody, .wc-table-cards tr { display: block; overflow: visible; }
-	.wc-table-cards tr {
-		border: 1px solid var(--wc-border);
-		border-radius: var(--wc-radius-md);
-		margin-bottom: var(--wc-space-3);
-		padding: var(--wc-space-3) var(--wc-space-4);
-	}
-	.wc-table-cards td {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: var(--wc-space-3);
-		border: none;
-		padding: 6px 0;
-		min-height: 32px;
-	}
-	.wc-table-cards td::before {
-		content: attr(data-label);
-		font-weight: 700;
-		font-size: var(--wc-fs-sm);
-		color: var(--wc-muted);
-	}
-	.wc-table-cards td.wc-col-title { font-weight: 700; font-size: 1.05em; }
-	.wc-table-cards td.wc-load-error { display: block; }
-	.wc-table-cards td.wc-load-error::before { content: none; }
+	/* Card-row transform + per-cell labels come from
+	   css/common/view-components.css (.wc-table--cards + td[data-cell]). */
+	.wc-table--cards td.wc-load-error { display: block; }
 }
 
 /* ── High-contrast / forced-colors hardening ──
  * forced-colors strips theme backgrounds entirely — restore borders and a
  * Highlight focus ring with system colors so structure survives. */
 @media (forced-colors: active) {
-	.wc-panel, .wc-msg, .wc-toast, .wc-status, .wc-badge-overdue,
-	.wc-pending-close, .wc-unlock, .wc-notice, .wc-error, .wc-honesty, .wc-warn,
-	.wc-table-cards tr, .wc-stat-tile, .wc-scope-strip, .wc-brand__icon,
-	.wc-page-header__icon {
+	.wc-panel, .wc-msg, .wc-toast, .wc-callout, .wc-badge,
+	.wc-unlock, .wc-notice, .wc-error, .wc-honesty, .wc-warn,
+	.wc-table--cards tr, .wc-stat-tile, .wc-scope-strip, .wc-brand__icon,
+	.wc-page-header__icon, .wc-filter-panel {
 		border: 1px solid CanvasText;
 	}
 	.wc-field input, .wc-field textarea, .wc-field select,
@@ -770,8 +686,8 @@
 		outline: 3px solid Highlight;
 		outline-offset: 2px;
 	}
-	.wc-badge-overdue, .wc-status, .wc-badge { forced-color-adjust: auto; }
-	.wc-badge::before, .wc-status::before { background: ButtonText; }
+	.wc-badge { forced-color-adjust: auto; }
+	.wc-badge__dot { background: ButtonText; }
 }
 
 /* prefers-contrast:more — low-vision users who keep colors but need
@@ -779,7 +695,7 @@
 @media (prefers-contrast: more) {
 	.wc-panel, .wc-msg, .wc-table td, .wc-table th,
 	.wc-field input, .wc-field textarea, .wc-field select,
-	.wc-status, .wc-stat-tile, .wc-scope-strip {
+	.wc-badge, .wc-stat-tile, .wc-scope-strip, .wc-callout {
 		border-color: var(--color-main-text);
 	}
 	.wc-app :focus-visible { outline-width: 3px; }

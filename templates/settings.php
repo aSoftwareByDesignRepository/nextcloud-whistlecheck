@@ -22,9 +22,19 @@ include __DIR__ . '/common/page-start.php';
 
 		<?php if ($section === 'categories'): ?>
 			<h2><?php p($l->t('Categories')); ?></h2>
-			<table class="wc-table"><tbody data-wc-cats aria-busy="true">
-				<tr><td colspan="4" class="wc-loading"><?php p($l->t('Loading…')); ?></td></tr>
-			</tbody></table>
+			<div class="wc-table-wrap">
+			<table class="wc-table wc-table--cards">
+				<thead><tr>
+					<th scope="col"><?php p($l->t('Label (German)')); ?></th>
+					<th scope="col"><?php p($l->t('Label (English)')); ?></th>
+					<th scope="col"><?php p($l->t('Status')); ?></th>
+					<th scope="col"><span class="hidden-visually"><?php p($l->t('Actions')); ?></span></th>
+				</tr></thead>
+				<tbody data-wc-cats aria-busy="true">
+				<tr><td colspan="4"><p class="wc-loading"><?php p($l->t('Loading…')); ?></p></td></tr>
+				</tbody>
+			</table>
+			</div>
 			<form data-wc-cat-form>
 				<div class="wc-field"><label for="wc-cat-de"><?php p($l->t('Label (German)')); ?></label>
 					<input id="wc-cat-de" name="label_de" maxlength="200" required></div>
@@ -35,8 +45,8 @@ include __DIR__ . '/common/page-start.php';
 
 		<?php elseif ($section === 'support'): ?>
 			<h2><?php p($l->t('Support')); ?></h2>
-			<p><a href="https://github.com/aSoftwareByDesignRepository/nextcloud-whistlecheck/issues" rel="noopener noreferrer"><?php p($l->t('Report a bug')); ?></a></p>
-			<p><a href="mailto:info@software-by-design.de"><?php p($l->t('Contact support')); ?></a></p>
+			<p class="wc-hint"><a href="https://github.com/aSoftwareByDesignRepository/nextcloud-whistlecheck/issues" rel="noopener noreferrer"><?php p($l->t('Report a bug')); ?></a></p>
+			<p class="wc-hint"><a href="mailto:info@software-by-design.de"><?php p($l->t('Contact support')); ?></a></p>
 
 		<?php else: ?>
 			<form data-wc-settings-form>
