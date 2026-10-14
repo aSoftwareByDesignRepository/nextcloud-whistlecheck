@@ -356,7 +356,9 @@
 .wc-msg-me { align-self: flex-end; background: var(--color-primary-element-light); }
 .wc-msg-them { align-self: flex-start; background: var(--color-background-hover); }
 .wc-msg-note { align-self: stretch; border-style: dashed; }
-.wc-msg-meta { font-size: var(--wc-fs-xs); color: var(--wc-muted); }
+/* Message timestamps carry functional chronology — keep them at the
+   readable 14px floor, not the 12px chrome size. */
+.wc-msg-meta { font-size: var(--wc-fs-sm); color: var(--wc-muted); }
 
 /* ── Form controls ─────────────────────────────────────────────────────── */
 .wc-field { margin: 0 0 var(--wc-space-4); max-width: 640px; }
@@ -492,7 +494,9 @@
 }
 .wc-case-meta__item { display: flex; flex-direction: column; gap: 2px; }
 .wc-case-meta__item dt {
-	font-size: var(--wc-fs-xs);
+	/* Functional labels (Received / Feedback due / Assignee) — 14px floor
+	   so they stay legible on mobile, not the 12px chrome size. */
+	font-size: var(--wc-fs-sm);
 	font-weight: 700;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;

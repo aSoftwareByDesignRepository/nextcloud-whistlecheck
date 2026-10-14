@@ -170,7 +170,7 @@
 .wc-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .wc-msg-me { align-self: flex-end; background: var(--color-primary-element-light); }
 .wc-msg-them { align-self: flex-start; background: var(--color-background-hover); }
-.wc-msg time { font-size: 0.8em; color: var(--color-text-maxcontrast); }
+.wc-msg time { font-size: 0.875em; color: var(--color-text-maxcontrast); }
 
 .wc-skip {
 	position: absolute;

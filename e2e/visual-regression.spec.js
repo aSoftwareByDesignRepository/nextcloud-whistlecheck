@@ -58,6 +58,22 @@ test.describe('public pages', () => {
 		await assertNotServerUpdater(page)
 		await expect(page.locator('#wc-follow-form')).toHaveScreenshot('follow-form-mobile.png', TOLERANCE)
 	})
+
+	test('report form: tablet boundary (768px)', async ({ page }) => {
+		// 768 is exactly the card-transform/breakpoint-md edge — layout
+		// regressions that only fire at the boundary live here.
+		await page.setViewportSize({ width: 768, height: 900 })
+		await page.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
+		await assertNotServerUpdater(page)
+		await expect(page.locator('#wc-report-form')).toBeVisible()
+		await expect(page.locator('[data-wc-e2e-badge]')).not.toContainText('Checking')
+		await expect(page.locator('#wc-report-form')).toHaveScreenshot('report-form-tablet.png', {
+			mask: [page.locator('#wc-category')],
+			...TOLERANCE,
+		})
+		const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+		expect(overflow).toBeLessThanOrEqual(1)
+	})
 })
 
 test.describe('officer surfaces', () => {
@@ -104,6 +120,23 @@ test.describe('officer surfaces', () => {
 		await expect(page.locator('[data-wc-inbox-filter]')).toHaveScreenshot('inbox-filter-mobile.png', TOLERANCE)
 	})
 
+	test('inbox table: card-transform boundary (768px)', async ({ page }) => {
+		// `max-width: 768px` is inclusive — at exactly 768 the table must
+		// already render as cards (tourcheck shipped this exact boundary bug).
+		await page.setViewportSize({ width: 768, height: 900 })
+		await login(page, { username: officer.uid, password: officer.password })
+		await page.goto('/apps/whistlecheck/', { waitUntil: 'domcontentloaded' })
+		await assertNotServerUpdater(page)
+		await expect(page.locator('[data-wc-inbox] tr').first()).toBeVisible({ timeout: 20000 })
+		// data-wc-inbox is the tbody — the wrap div is its ancestor.
+		await expect(page.locator('.wc-table-wrap')).toHaveScreenshot('inbox-table-boundary.png', {
+			mask: [page.locator('[data-wc-inbox]')], // case rows are fixtures — shape, not content
+			...TOLERANCE,
+		})
+		const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+		expect(overflow).toBeLessThanOrEqual(1)
+	})
+
 	test('case hero: status badge + legal actions keep layout', async ({ page }) => {
 		await login(page, { username: officer.uid, password: officer.password })
 		await page.goto(`/apps/whistlecheck/cases/${caseId}`, { waitUntil: 'domcontentloaded' })
@@ -114,5 +147,21 @@ test.describe('officer surfaces', () => {
 			mask: [page.locator('[data-wc-meta-received], [data-wc-meta-due], [data-wc-assign]')],
 			...TOLERANCE,
 		})
+	})
+
+	test('case hero: mobile layout (320px)', async ({ page }) => {
+		// Hero meta grid + legal-action buttons must wrap/stack without
+		// clipping on the smallest target width.
+		await page.setViewportSize({ width: 320, height: 900 })
+		await login(page, { username: officer.uid, password: officer.password })
+		await page.goto(`/apps/whistlecheck/cases/${caseId}`, { waitUntil: 'domcontentloaded' })
+		await assertNotServerUpdater(page)
+		await expect(page.locator('[data-wc-status-badge]')).toHaveText('Received', { timeout: 15000 })
+		await expect(page.locator('.wc-case-hero')).toHaveScreenshot('case-hero-mobile.png', {
+			mask: [page.locator('[data-wc-meta-received], [data-wc-meta-due], [data-wc-assign]')],
+			...TOLERANCE,
+		})
+		const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+		expect(overflow).toBeLessThanOrEqual(1)
 	})
 })

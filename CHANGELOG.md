@@ -63,6 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inside the restore transaction.
 - WCAG 2.1 AA contrast fixes under dark theme (tinted badges/active states) and
   underlined links inside prose blocks.
+- Message timestamps and case-metadata labels raised to the 14px legibility
+  floor (were 12–13px) — chronology is functional content, not chrome.
+
+### Added (visual regression)
+
+- Committed pixel goldens now also pin the 768px card-transform boundary
+  (inbox table) and the 320px case hero, alongside the existing report /
+  follow-form / inbox-filter / stat-strip / case-hero baselines.
 
 ### Security
 
