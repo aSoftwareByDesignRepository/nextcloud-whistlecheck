@@ -95,6 +95,48 @@ test.describe('security: executed probes', () => {
 		expect(await res.text()).toContain('designated case officers')
 	})
 
+	test('app menu entry exists only for officers', async ({ page, browser }) => {
+		// nav_entry_access_leak: the officer-only app must not advertise a
+		// menu entry to excluded users — a dead end on web AND a disclosure
+		// via the OCS navigation endpoint on mobile clients.
+		const navIds = async (p) => {
+			const res = await p.request.get('/ocs/v2.php/core/navigation/apps?format=json', {
+				headers: { 'OCS-APIRequest': 'true' },
+			})
+			expect(res.status()).toBe(200)
+			return (await res.json()).ocs.data
+		}
+
+		// The apps menu renders behind the waffle button — entries only exist
+		// in the DOM once the popover opens.
+		const openMenuLinks = async (p) => {
+			await p.goto('/index.php/apps/dashboard/', { waitUntil: 'networkidle' })
+			await p.getByRole('button', { name: /Open apps menu/ }).first().click()
+			const links = p.locator('body a[href*="/apps/"]')
+			await expect(links.first()).toBeVisible()
+			return links.evaluateAll((els) => els.map((a) => a.getAttribute('href')))
+		}
+
+		// Excluded user: no entry in the OCS payload or the rendered menu.
+		await login(page, { username: outsider.uid, password: outsider.password })
+		expect((await navIds(page)).map((e) => e.id)).not.toContain('whistlecheck')
+		expect((await openMenuLinks(page)).filter((h) => h.includes('whistlecheck'))).toHaveLength(0)
+
+		// Officer: exactly one entry, resolving to the real route, rendered in the menu.
+		const ctx = await browser.newContext()
+		try {
+			const op = await ctx.newPage()
+			await login(op, { username: officerA.uid, password: officerA.password })
+			const entries = (await navIds(op)).filter((e) => e.id === 'whistlecheck')
+			expect(entries).toHaveLength(1)
+			expect(entries[0].href).toContain('/apps/whistlecheck')
+			expect(entries[0].name).toBeTruthy()
+			expect((await openMenuLinks(op)).filter((h) => h.includes('whistlecheck'))).toHaveLength(1)
+		} finally {
+			await ctx.close()
+		}
+	})
+
 	test('officer without wrap gets byte-identical canonical 404 (no oracle)', async ({ page }) => {
 		const { caseId } = makeCase(officerA.uid)
 		try {

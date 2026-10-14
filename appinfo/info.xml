@@ -101,15 +101,9 @@ Wir verbessern diese App mit Rückmeldungen aus der Praxis. Fehlerberichte, Stol
 		<keyword>anonymous</keyword>
 		<keyword>encryption</keyword>
 	</keywords>
-	<navigations>
-		<navigation>
-			<name>WhistleCheck</name>
-			<route>whistlecheck.page.index</route>
-			<icon>app.svg</icon>
-			<order>2</order>
-			<type>link</type>
-		</navigation>
-	</navigations>
+	<!-- No <navigation> here: the menu entry is registered conditionally via
+	     NavGate (officer group only) — a static entry would advertise a 403
+	     door to every logged-in non-officer. -->
 	<settings>
 		<admin>OCA\WhistleCheck\Settings\AdminSettings</admin>
 		<admin-section>OCA\WhistleCheck\Settings\AdminSection</admin-section>

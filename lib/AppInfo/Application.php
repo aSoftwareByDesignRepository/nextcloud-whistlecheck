@@ -14,7 +14,9 @@ use OCA\WhistleCheck\Repair\BackupBeforeUpdate;
 use OCA\WhistleCheck\Repair\EnsureWhistleCheckDefaults;
 use OCA\WhistleCheck\Repair\EnsureWhistleCheckSchema;
 use OCA\WhistleCheck\Repair\UninstallDropTables;
+use OCA\WhistleCheck\Service\OfficerKeyService;
 use OCA\WhistleCheck\Service\UpgradeBackupService;
+use OCA\WhistleCheck\Support\NavGate;
 use OCP\App\IAppManager;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
@@ -79,5 +81,15 @@ class Application extends App implements IBootstrap
 
 	public function boot(IBootContext $context): void
 	{
+		$app = $context->getAppContainer();
+		// Menu entry only for officers — non-officers would land on a 403.
+		NavGate::register(
+			$app,
+			'whistlecheck.page.index',
+			'app.svg',
+			'WhistleCheck',
+			2,
+			static fn(string $uid): bool => $app->get(OfficerKeyService::class)->isOfficer($uid),
+		);
 	}
 }
