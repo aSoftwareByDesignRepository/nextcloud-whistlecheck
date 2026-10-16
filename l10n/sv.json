@@ -35,6 +35,7 @@
         "Billing": "Fakturering",
         "Breadcrumb": "Brödsmulor",
         "Bug report": "Felrapport",
+        "Require a second officer to confirm case closure": "Kräv att en andra handläggare bekräftar avslutning av ett ärende",
         "by": "av",
         "By category": "Per kategori",
         "By status": "Per status",
@@ -92,11 +93,14 @@
         "Encrypted in transit and at rest (JavaScript disabled)": "Krypterad vid överföring och lagring (JavaScript avstängt)",
         "End-to-end encrypted": "End-to-end-krypterad",
         "End-to-end encrypted reports from anonymous reporters.": "End-to-end-krypterade anmälningar från anonyma anmälare.",
-        "Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to {n} case(s) until another officer re-grants them.": "Ange din nuvarande lösenfras för att behålla åtkomsten till dina ärenden. Om du har glömt den, klicka på „Rotera min nyckel“ igen — du förlorar åtkomsten till {n} ärende(n) tills en annan handläggare beviljar den igen.",
+        "_Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to %n case until another officer re-grants them._::_Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to %n cases until another officer re-grants them._": [
+            "Ange din nuvarande lösenfras för att behålla åtkomsten till dina ärenden. Om du har glömt den, klicka på „Rotera min nyckel“ igen — du förlorar åtkomsten till %n ärende tills en annan handläggare beviljar den igen.",
+            "Ange din nuvarande lösenfras för att behålla åtkomsten till dina ärenden. Om du har glömt den, klicka på „Rotera min nyckel“ igen — du förlorar åtkomsten till %n ärenden tills en annan handläggare beviljar den igen."
+        ],
         "Enter your WhistleCheck passphrase": "Ange din WhistleCheck-lösenordsfras",
         "Entries stay encrypted until you open them.": "Poster förblir krypterade tills du öppnar dem.",
         "Escalate to TicketCheck": "Eskalera till TicketCheck",
-        "Escalation officer (uid)": "Eskaleringshandläggare (uid)",
+        "Escalation officer": "Eskaleringshandläggare",
         "Escalation: a case is overdue.": "Eskalering: ett ärende är försenat.",
         "Escalations": "Eskalationer",
         "Event": "Händelse",
@@ -170,7 +174,7 @@
         "Please check the highlighted fields.": "Kontrollera de markerade fälten.",
         "Please fill in the highlighted fields.": "Fyll i de markerade fälten.",
         "Please wait a moment": "Vänta ett ögonblick",
-        "PoW escalation after N hits over limit": "PoW-eskalering efter N förfrågningar över gränsen",
+        "Require proof-of-work after this many hits over the rate limit": "Kräv proof-of-work efter så här många förfrågningar över gränsen",
         "Print code": "Skriv ut kod",
         "Priority": "Prioritet",
         "QR code of your case code": "QR-kod för ditt ärendenummer",
@@ -241,7 +245,10 @@
         "This case is not encrypted for your key — another officer must re-grant access.": "Detta ärende är inte krypterat för din nyckel — en annan handläggare måste bevilja åtkomsten igen.",
         "This channel is not ready yet. Please try again later.": "Den här kanalen är inte klar ännu. Försök igen senare.",
         "This export was already sent.": "Den här exporten har redan skickats.",
-        "This protects the reporting channel against abuse. You can try again in about {n} seconds.": "Detta skyddar anmälningskanalen mot missbruk. Du kan försöka igen om cirka {n} sekunder.",
+        "_This protects the reporting channel against abuse. You can try again in about %n second._::_This protects the reporting channel against abuse. You can try again in about %n seconds._": [
+            "Detta skyddar anmälningskanalen mot missbruk. Du kan försöka igen om cirka %n sekund.",
+            "Detta skyddar anmälningskanalen mot missbruk. Du kan försöka igen om cirka %n sekunder."
+        ],
         "This report was encrypted on our server (JavaScript was off).": "Denna anmälan krypterades på vår server (JavaScript var avstängt).",
         "Ticket created.": "Ärende skapat.",
         "Ticket text": "Ärendetext",
@@ -272,15 +279,36 @@
         "You": "Du",
         "Your case": "Ditt ärende",
         "Your case code": "Din ärendekod",
-        "Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.": "Din nuvarande nyckel finns inte på den här enheten — rotation stänger dig ute från {n} ärende(n) tills en annan handläggare ger åtkomst igen. Klicka igen för att bekräfta.",
+        "_Your current key is not on this device — rotating locks you out of %n case until another officer re-grants access. Click again to confirm._::_Your current key is not on this device — rotating locks you out of %n cases until another officer re-grants access. Click again to confirm._": [
+            "Din nuvarande nyckel finns inte på den här enheten — rotation stänger dig ute från %n ärende tills en annan handläggare ger åtkomst igen. Klicka igen för att bekräfta.",
+            "Din nuvarande nyckel finns inte på den här enheten — rotation stänger dig ute från %n ärenden tills en annan handläggare ger åtkomst igen. Klicka igen för att bekräfta."
+        ],
         "Your current key is not on this device — rotating now locks you out of your cases until another officer re-grants access.": "Din nuvarande nyckel finns inte på den här enheten — rotation stänger dig nu ute från dina ärenden tills en annan handläggare ger åtkomst igen.",
         "Your officer key is not on this device. Set it up on the Officers page to read cases.": "Din officer-nyckel finns inte på den här enheten. Konfigurera den på sidan Officers för att läsa ärenden.",
         "Your report is saved. Keep your case code safe — it is the only way back in.": "Din anmälan är sparad. Förvara din ärendekod säkert — det är den enda vägen tillbaka.",
         "Your report was received. Case officers can now read and answer it.": "Din anmälan har tagits emot. Handläggare kan nu läsa och besvara den.",
-        "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.": "{n} ärende(n) kunde inte krypteras om — klicka på „Rotera min nyckel“ igen för att fortsätta ändå.",
-        "{n} cases": "{n} ärenden",
-        "{n} entries": "{n} poster",
-        "{n} of {m} cases": "{n} ärenden av {m}"
+        "_%n case could not be re-wrapped — click \"Rotate my key\" again to rotate anyway._::_%n cases could not be re-wrapped — click \"Rotate my key\" again to rotate anyway._": [
+            "%n ärende kunde inte krypteras om — klicka på „Rotera min nyckel“ igen för att fortsätta ändå.",
+            "%n ärenden kunde inte krypteras om — klicka på „Rotera min nyckel“ igen för att fortsätta ändå."
+        ],
+        "_%n case_::_%n cases_": [
+            "%n ärende",
+            "%n ärenden"
+        ],
+        "_%n entry_::_%n entries_": [
+            "%n post",
+            "%n poster"
+        ],
+        "_%n of {m} cases_::_%n of {m} cases_": [
+            "%n ärende av {m}",
+            "%n ärenden av {m}"
+        ],
+        "Please confirm": "Bekräfta",
+        "Confirm": "Bekräfta",
+        "Cancel": "Avbryt",
+        "Back to your apps": "Tillbaka till dina appar",
+        "None": "Ingen",
+        "no longer an officer": "inte längre handläggare"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

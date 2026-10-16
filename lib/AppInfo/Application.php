@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\WhistleCheck\AppInfo;
 
+use OCA\WhistleCheck\Middleware\PublicCookieFreeMiddleware;
 use OCA\WhistleCheck\Notification\Notifier;
 use OCA\WhistleCheck\Repair\BackupBeforeUpdate;
 use OCA\WhistleCheck\Repair\EnsureWhistleCheckDefaults;
@@ -41,6 +42,7 @@ class Application extends App implements IBootstrap
 	public function register(IRegistrationContext $context): void
 	{
 		$context->registerNotifierService(Notifier::class);
+		$context->registerMiddleware(PublicCookieFreeMiddleware::class);
 
 		// Repair steps — explicit registration, full constructor args
 		// (repair-step-di rule: never rely on autowiring here).

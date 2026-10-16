@@ -55,8 +55,18 @@ include __DIR__ . '/common/page-start.php';
 						<input id="wc-org" data-wc-config="org_name" data-wc-revision="<?php p($rv('org_name')); ?>" value="<?php p($val('org_name')); ?>" maxlength="2000"></div>
 					<div class="wc-field"><label for="wc-welcome"><?php p($l->t('Welcome text (shown on the report page)')); ?></label>
 						<textarea id="wc-welcome" data-wc-config="welcome_text" data-wc-revision="<?php p($rv('welcome_text')); ?>" rows="4" maxlength="2000"><?php p($val('welcome_text')); ?></textarea></div>
-					<div class="wc-field"><label for="wc-esc"><?php p($l->t('Escalation officer (uid)')); ?></label>
-						<input id="wc-esc" data-wc-config="escalation_uid" data-wc-revision="<?php p($rv('escalation_uid')); ?>" value="<?php p($val('escalation_uid')); ?>"></div>
+					<div class="wc-field"><label for="wc-esc"><?php p($l->t('Escalation officer')); ?></label>
+						<select id="wc-esc" data-wc-config="escalation_uid" data-wc-revision="<?php p($rv('escalation_uid')); ?>">
+							<option value=""><?php p($l->t('None')); ?></option>
+							<?php $escUids = array_column($_['officers'] ?? [], 'uid'); ?>
+							<?php foreach ($escUids as $oUid): ?>
+								<option value="<?php p($oUid); ?>" <?php if ($val('escalation_uid') === $oUid): ?>selected<?php endif; ?>><?php p($oUid); ?></option>
+							<?php endforeach; ?>
+							<?php if ($val('escalation_uid') !== '' && !in_array($val('escalation_uid'), $escUids, true)): ?>
+								<option value="<?php p($val('escalation_uid')); ?>" selected><?php p($val('escalation_uid') . ' — ' . $l->t('no longer an officer')); ?></option>
+							<?php endif; ?>
+						</select></div>
+					<label><input type="checkbox" data-wc-config="two_person_close" data-wc-revision="<?php p($rv('two_person_close')); ?>" <?php if ($val('two_person_close') === '1'): ?>checked<?php endif; ?>> <?php p($l->t('Require a second officer to confirm case closure')); ?></label>
 				<?php elseif ($section === 'attachments'): ?>
 					<label><input type="checkbox" data-wc-config="attachments_enabled" data-wc-revision="<?php p($rv('attachments_enabled')); ?>" <?php if ($val('attachments_enabled') === '1'): ?>checked<?php endif; ?>> <?php p($l->t('Allow attachments')); ?></label>
 					<div class="wc-field"><label for="wc-maxmb"><?php p($l->t('Max attachment size (MB)')); ?></label>
@@ -68,7 +78,7 @@ include __DIR__ . '/common/page-start.php';
 						<input id="wc-rem" type="number" min="0" max="90" data-wc-config="reminder_days" data-wc-revision="<?php p($rv('reminder_days')); ?>" value="<?php p($val('reminder_days')); ?>"></div>
 				<?php elseif ($section === 'access'): ?>
 					<label><input type="checkbox" data-wc-config="nojs_enabled" data-wc-revision="<?php p($rv('nojs_enabled')); ?>" <?php if ($val('nojs_enabled') === '1'): ?>checked<?php endif; ?>> <?php p($l->t('Allow no-JavaScript submission (server-side encryption, honestly flagged)')); ?></label>
-					<div class="wc-field"><label for="wc-pow"><?php p($l->t('PoW escalation after N hits over limit')); ?></label>
+					<div class="wc-field"><label for="wc-pow"><?php p($l->t('Require proof-of-work after this many hits over the rate limit')); ?></label>
 						<input id="wc-pow" type="number" min="1" max="100" data-wc-config="require_pow_after" data-wc-revision="<?php p($rv('require_pow_after')); ?>" value="<?php p($val('require_pow_after')); ?>"></div>
 				<?php endif; ?>
 				<button type="submit" class="wc-btn-primary"><?php p($l->t('Save')); ?></button>

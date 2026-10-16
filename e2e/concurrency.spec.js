@@ -4,7 +4,7 @@ import { randomBytes, createHash } from 'node:crypto'
 import { login } from './helpers/auth.js'
 import { provisionOfficer, deprovisionOfficer } from './helpers/officer.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
-import { queryDb } from './helpers/stack.js'
+import { queryDb, cleanupCase } from './helpers/stack.js'
 
 /**
  * ATLAS Lens 1 — concurrency proofs against the REAL stack.
@@ -30,17 +30,6 @@ function makeCase(officerUid, { codeHash = null, hint = null } = {}) {
 	mysql(`INSERT INTO oc_wchk_case_keys (case_id, officer_uid, wrapped_key, granted_at)
 		VALUES (${caseId}, '${officerUid}', 'e2e-synthetic-wrap', NOW())`)
 	return { caseId, lookupHint }
-}
-
-function cleanupCase(caseId, officerUid) {
-	try {
-		mysql(`DELETE FROM oc_wchk_escalations WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_case_keys WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_messages WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_idem WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_cases WHERE id=${caseId};
-			DELETE FROM oc_helpdesk_tickets WHERE created_by='${officerUid}';`)
-	} catch { /* best-effort */ }
 }
 
 /** Fire N identical requests truly in parallel inside the officer session. */

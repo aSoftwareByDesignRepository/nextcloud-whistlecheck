@@ -19,6 +19,10 @@ export function provisionOfficer() {
 	const password = 'WcJourney-' + randomBytes(8).toString('hex')
 	occ(['user:add', '--password-from-env', uid], { OC_PASS: password })
 	occ(['group:adduser', GROUP, uid])
+	// Pin the fixture language: without it the user inherits whatever
+	// default_language a sibling lane last mutated on the shared instance —
+	// specs asserting rendered copy then flake under arbitrary locales.
+	occ(['user:setting', uid, 'core', 'lang', 'en'])
 	return { uid, password }
 }
 

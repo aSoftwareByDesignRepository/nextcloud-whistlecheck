@@ -68,6 +68,50 @@
 		};
 	}
 
+	/**
+	 * Server errors must never reach a lay reporter verbatim — 'INTERNAL' /
+	 * 'Internal error' is operator jargon with no next step. 4xx payloads
+	 * keep their message (validation wording); 5xx and unparsable bodies
+	 * get the translated retry copy.
+	 */
+	function wireErrorText(res, json) {
+		if (res.status >= 500 || json === null || json === undefined) {
+			return t('err_generic', 'Something went wrong. Please try again.');
+		}
+		if (res.status === 429) {
+			return t('err_limited', 'Too many requests — please try again later.');
+		}
+		return json.message || t('err_generic', 'Something went wrong. Please try again.');
+	}
+
+	// Status pill — same label vocabulary + tint variants as the officer
+	// surfaces (wc-badge styles live in whistlecheck-public.css).
+	const STATUS_VARIANT = { received: 'info', in_review: 'warning', action_taken: 'success' };
+	function paintStatus(el, status) {
+		const v = STATUS_VARIANT[status];
+		el.className = 'wc-status wc-badge' + (v ? ' wc-badge--' + v : '');
+		el.textContent = '';
+		const dot = document.createElement('span');
+		dot.className = 'wc-badge__dot';
+		dot.setAttribute('aria-hidden', 'true');
+		el.appendChild(dot);
+		el.appendChild(document.createTextNode(t('status_' + status, status)));
+	}
+
+	/** ISO datetime → locale text; input is also kept in the datetime attr. */
+	function fmtDateTime(iso) {
+		const d = new Date(iso);
+		return isNaN(d.getTime()) ? String(iso) : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+	}
+
+	/** Y-m-d date → locale text, pinned to UTC so the day never shifts. */
+	function fmtDate(ymd) {
+		const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd));
+		if (!m) return String(ymd || '');
+		return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
+			.toLocaleDateString(undefined, { dateStyle: 'long', timeZone: 'UTC' });
+	}
+
 	function showError(msg, fields) {
 		const box = document.getElementById('wc-form-error');
 		if (box) {
@@ -253,7 +297,7 @@
 			if (res.ok && json && json.success) {
 				showCode(C.format(codeCanonical));
 			} else {
-				showError((json && json.message) || t('err_generic', 'Something went wrong.'), json && json.fields);
+				showError(wireErrorText(res, json), json && json.fields);
 			}
 		} catch (e) {
 			showError(t('err_generic', 'Something went wrong. Please try again.'));
@@ -327,7 +371,11 @@
 			const p = await api('/api/public/case/params', { hint });
 			const params = (await safeJson(p))?.data;
 			if (!params) {
-				showError(t('err_invalid_code', 'Invalid or expired case code.'));
+				// A 5xx/429 is not a bad code — never tell the reporter
+				// their case code is wrong when the server simply failed.
+				showError(p.status >= 400 && p.status !== 401 && p.status !== 403 && p.status !== 404
+					? wireErrorText(p, null)
+					: t('err_invalid_code', 'Invalid or expired case code.'));
 				return;
 			}
 			const verifier = await C.verifier(bytes, params.salt);
@@ -336,7 +384,9 @@
 			const o = await api('/api/public/case/open', { hint, verifier });
 			const openJson = await safeJson(o);
 			if (!o.ok || !openJson || !openJson.success) {
-				showError(t('err_invalid_code', 'Invalid or expired case code.'));
+				showError(o.status >= 400 && o.status !== 401 && o.status !== 403 && o.status !== 404
+					? wireErrorText(o, openJson)
+					: t('err_invalid_code', 'Invalid or expired case code.'));
 				return;
 			}
 			const view = openJson.data;
@@ -369,14 +419,15 @@
 			const p = document.createElement('p');
 			p.textContent = plain === 'wchk:receipt' ? t('receipt_text', 'Your report was received. Case officers can now read and answer it.') : (plain || '…');
 			const time = document.createElement('time');
-			time.textContent = m.at;
+			time.dateTime = m.at;
+			time.textContent = fmtDateTime(m.at);
 			li.appendChild(p); li.appendChild(time);
 			list.appendChild(li);
 		}
 		const statusEl = panel.querySelector('.wc-status');
-		if (statusEl) statusEl.textContent = view.status;
+		if (statusEl) paintStatus(statusEl, view.status);
 		const dueEl = panel.querySelector('.wc-due');
-		if (dueEl) dueEl.textContent = view.feedback_due;
+		if (dueEl) dueEl.textContent = fmtDate(view.feedback_due);
 		if (form) form.hidden = true;
 		panel.hidden = false;
 		panel.focus();
@@ -415,7 +466,7 @@
 						li.appendChild(p);
 						list.appendChild(li);
 					} else {
-						showError((json && json.message) || t('err_generic', 'Something went wrong.'));
+						showError(wireErrorText(res, json));
 					}
 				} catch (e) {
 					// Network/crypto failure — the user must see it, not a silent hang.

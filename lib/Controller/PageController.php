@@ -173,9 +173,6 @@ class PageController extends Controller
 			'keyreg_rotate_copy' => $this->l->t('Rotating creates a fresh keypair and re-encrypts every case you can read. Other officers are unaffected.'),
 			'keyreg_rotate_btn' => $this->l->t('Rotate my key'),
 			'keyreg_orphan_warn' => $this->l->t('Your current key is not on this device — rotating now locks you out of your cases until another officer re-grants access.'),
-			'rotate_partial' => $this->l->t('{n} case(s) could not be re-wrapped — click "Rotate my key" again to rotate anyway.'),
-			'rotate_orphan_confirm' => $this->l->t('Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.'),
-			'rotate_need_oldpass' => $this->l->t('Enter your current passphrase to keep access to your cases. If you have forgotten it, click "Rotate my key" again — you will lose access to {n} case(s) until another officer re-grants them.'),
 			'err_storage' => $this->l->t('Could not store the key in this browser — enable site storage and try again.'),
 			'err_nowrap' => $this->l->t('This case is not encrypted for your key — another officer must re-grant access.'),
 			'err_copy' => $this->l->t('Copy failed — select and copy the text manually.'),
@@ -202,6 +199,9 @@ class PageController extends Controller
 			'col_label_en' => $this->l->t('Label (English)'),
 			'status_revoked' => $this->l->t('Revoked'),
 			'confirm_revoke' => $this->l->t('Revoke this officer? You will re-wrap all cases afterwards.'),
+			'confirm_title' => $this->l->t('Please confirm'),
+			'confirm' => $this->l->t('Confirm'),
+			'cancel' => $this->l->t('Cancel'),
 			'key_saved' => $this->l->t('Key registered. Keep your passphrase safe.'),
 			'status_saved' => $this->l->t('Status updated.'),
 			'settings_saved' => $this->l->t('Settings saved.'),
@@ -224,8 +224,6 @@ class PageController extends Controller
 			'esc_created' => $this->l->t('Ticket created.'),
 			'esc_replayed' => $this->l->t('This export was already sent.'),
 			// Inbox filter + stats + list-head
-			'count_cases' => $this->l->t('{n} cases'),
-			'count_cases_of' => $this->l->t('{n} of {m} cases'),
 			'inbox_empty_title' => $this->l->t('No cases yet.'),
 			'inbox_empty_text' => $this->l->t('New reports appear here as soon as they are submitted.'),
 			'inbox_empty_filtered' => $this->l->t('No cases match the filter.'),
@@ -233,7 +231,6 @@ class PageController extends Controller
 			// Audit page
 			'chain_ok_text' => $this->l->t('All recorded events form an unbroken chain.'),
 			'chain_broken_text' => $this->l->t('The audit chain is broken — treat this log as untrusted and investigate before relying on it.'),
-			'audit_entries' => $this->l->t('{n} entries'),
 			// Officers
 			'you' => $this->l->t('You'),
 			'officers_empty' => $this->l->t('No officers yet.'),
@@ -246,6 +243,9 @@ class PageController extends Controller
 	{
 		$uid = $this->userSession->getUser()?->getUID();
 		if (!$uid || !$this->officerKeys->isOfficer($uid)) {
+			// Denied pages share the public sheet — it carries the wc-*
+			// chrome (skip link, buttons, card layout) the guest shell lacks.
+			Util::addStyle('whistlecheck', 'whistlecheck-public');
 			// Authorization failure must report 403 — a 200 denial poisons
 			// uptime/security scanners that read the status line.
 			$res = new TemplateResponse('whistlecheck', 'denied', ['urlGenerator' => $this->urlGenerator], TemplateResponse::RENDER_AS_GUEST);

@@ -16,7 +16,7 @@ declare(strict_types=1);
 		<div class="wc-honesty" role="alert">
 			<p><?php p($l->t('Too many requests — please try again later.')); ?></p>
 			<?php if (!empty($_['retry_after'])): ?>
-				<p class="wc-hint"><?php p($l->t('This protects the reporting channel against abuse. You can try again in about {n} seconds.', ['n' => (int)$_['retry_after']])); ?></p>
+				<p class="wc-hint"><?php p($l->n('This protects the reporting channel against abuse. You can try again in about %n second.', 'This protects the reporting channel against abuse. You can try again in about %n seconds.', (int)$_['retry_after'])); ?></p>
 			<?php endif; ?>
 		</div>
 	</main>

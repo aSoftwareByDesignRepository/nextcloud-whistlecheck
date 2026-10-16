@@ -29,6 +29,7 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\IDateTimeFormatter;
 use OCP\IRequest;
 use OCP\IL10N;
 use OCP\IURLGenerator;
@@ -61,6 +62,7 @@ class PublicPageController extends Controller
 		private readonly OfficerKeyService $officerKeys,
 		private readonly IURLGenerator $urlGenerator,
 		private readonly IL10N $l,
+		private readonly IDateTimeFormatter $dateFormatter,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -251,18 +253,69 @@ class PublicPageController extends Controller
 				'direction' => $m['direction'],
 				'text' => $plain !== null ? $this->sanitize->plainText($plain) : '',
 				'at' => $m['at'],
+				'at_human' => $this->humanDateTime((string)$m['at']),
 			];
 		}
 		sodium_memzero($caseKey);
 		sodium_memzero($kRep);
 		return [
 			'status' => $view['status'],
+			// Reporter surface: localized label + pill variant, never a raw
+			// wire enum (same vocabulary as the officer status badges).
+			'status_label' => $this->statusLabel((string)$view['status']),
+			'status_variant' => $this->statusVariant((string)$view['status']),
 			'received_at' => $view['received_at'],
 			'feedback_due' => $view['feedback_due'],
+			'feedback_due_human' => $this->humanDate((string)$view['feedback_due']),
 			'readonly' => $view['readonly'],
 			'messages' => $msgs,
 			'e2e' => false,
 		];
+	}
+
+	/** Localized label for a case status — mirrors officerI18n status_*. */
+	private function statusLabel(string $status): string
+	{
+		return match ($status) {
+			'received' => $this->l->t('Received'),
+			'in_review' => $this->l->t('In review'),
+			'action_taken' => $this->l->t('Action taken'),
+			'closed' => $this->l->t('Closed'),
+			'archived' => $this->l->t('Archived'),
+			default => $status,
+		};
+	}
+
+	/** Badge tint for a case status — mirrors JS STATUS_VARIANT. */
+	private function statusVariant(string $status): string
+	{
+		return match ($status) {
+			'received' => 'info',
+			'in_review' => 'warning',
+			'action_taken' => 'success',
+			default => '',
+		};
+	}
+
+	private function humanDateTime(string $iso): string
+	{
+		try {
+			return $this->dateFormatter->formatDateTime(
+				(new \DateTimeImmutable($iso))->getTimestamp(), 'medium', 'short', null, $this->l);
+		} catch (\Throwable) {
+			return $iso;
+		}
+	}
+
+	/** feedback_due is date-only (Y-m-d) — pin to UTC noon so TZ never shifts the day. */
+	private function humanDate(string $ymd): string
+	{
+		try {
+			$ts = (new \DateTimeImmutable($ymd . ' 12:00:00', new \DateTimeZone('UTC')))->getTimestamp();
+			return $this->dateFormatter->formatDate($ts, 'long', new \DateTimeZone('UTC'), $this->l);
+		} catch (\Throwable) {
+			return $ymd;
+		}
 	}
 
 	private function formParams(): array
@@ -326,12 +379,18 @@ class PublicPageController extends Controller
 			'err_required' => $this->l->t('Please fill in the highlighted fields.'),
 			'err_generic' => $this->l->t('Something went wrong. Please try again.'),
 			'err_invalid_code' => $this->l->t('Invalid or expired case code.'),
+			'err_limited' => $this->l->t('Too many requests — please try again later.'),
 			'err_notready' => $this->l->t('This channel is not ready yet. Please try again later.'),
 			'sending' => $this->l->t('Sending…'),
 			'opening' => $this->l->t('Opening…'),
 			'e2e_badge' => $this->l->t('End-to-end encrypted'),
 			'nojs_badge' => $this->l->t('Encrypted in transit and at rest (JavaScript disabled)'),
 			'receipt_text' => $this->l->t('Your report was received. Case officers can now read and answer it.'),
+			'status_received' => $this->l->t('Received'),
+			'status_in_review' => $this->l->t('In review'),
+			'status_action_taken' => $this->l->t('Action taken'),
+			'status_closed' => $this->l->t('Closed'),
+			'status_archived' => $this->l->t('Archived'),
 			'copied' => $this->l->t('Copied.'),
 			'copy_manual' => $this->l->t('Select the code and copy it manually'),
 			'show_qr' => $this->l->t('Show QR code'),

@@ -13,6 +13,17 @@
 	min-height: 100vh;
 	background: var(--color-main-background);
 	color: var(--color-main-text);
+	/* NC guest layout sets body{text-align:center} — reset inheritance so
+	 * form labels/controls are start-aligned (rendered-surface contract). */
+	text-align: start;
+	/* NC 30+ remaps --color-{success,warning,error} to pale tints — deriving
+	 * callout wells from the *-text inks keeps them visible on every theme
+	 * (same mixes as css/common/tokens.css; duplicated here because this file
+	 * is loaded standalone on the public pages). */
+	--wc-tint-success: color-mix(in srgb, var(--color-success-text, var(--color-success)) 18%, var(--color-main-background));
+	--wc-tint-warning: color-mix(in srgb, var(--color-warning-text, var(--color-warning)) 22%, var(--color-main-background));
+	--wc-tint-danger: color-mix(in srgb, var(--color-error-text, var(--color-error)) 18%, var(--color-main-background));
+	--wc-tint-info: var(--color-primary-element-light);
 	/* NC guest layout centers #content with fixed top/bottom offsets and
 	 * clips overflow — our long-form pages must instead pin to the viewport
 	 * and scroll, or the submit button is unreachable (a11y + responsive). */
@@ -49,6 +60,30 @@
 }
 .wc-welcome { margin: 16px 0; }
 
+/* §3.2 status pills — verbatim-synced with css/common/view-components.css
+ * (this sheet loads standalone on the public pages; keep tint-token parity). */
+.wc-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px var(--wc-space-2, 8px);
+	border-radius: var(--wc-radius-pill, 999px);
+	font-size: var(--wc-fs-xs, 0.75rem);
+	font-weight: 600;
+	white-space: nowrap;
+	background: var(--wc-bg-soft, var(--color-background-dark));
+	color: var(--wc-text, var(--color-main-text));
+}
+.wc-badge__dot { width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.wc-badge--success { background: var(--wc-tint-success, var(--color-background-dark)); }
+.wc-badge--success .wc-badge__dot { color: var(--color-success-text, var(--color-success)); }
+.wc-badge--warning { background: var(--wc-tint-warning, var(--color-background-dark)); }
+.wc-badge--warning .wc-badge__dot { color: var(--color-warning-text, var(--color-warning)); }
+.wc-badge--danger { background: var(--wc-tint-danger, var(--color-background-dark)); }
+.wc-badge--danger .wc-badge__dot { color: var(--wc-danger-ink, var(--color-error)); }
+.wc-badge--info { background: var(--wc-tint-info, var(--color-primary-element-light)); }
+.wc-badge--info .wc-badge__dot { color: var(--color-primary-element); }
+
 .wc-field { margin: 0 0 20px; }
 .wc-field label { display: block; font-weight: 700; margin-bottom: 6px; }
 .wc-field input[type=text], .wc-field textarea, .wc-field select,
@@ -65,6 +100,9 @@
 }
 .wc-field textarea { min-height: 120px; resize: vertical; }
 .wc-hint { font-size: 0.9em; color: var(--color-text-maxcontrast); margin: 6px 0 0; }
+/* Inside a tinted callout the hint must keep the callout's *-text ink —
+ * the standalone maxcontrast gray is only ~3.7:1 on the tint fills. */
+.wc-honesty .wc-hint, .wc-error .wc-hint, .wc-notice .wc-hint { color: inherit; }
 
 .wc-hp {
 	position: absolute;
@@ -78,7 +116,7 @@
 .wc-honesty {
 	padding: 12px 16px;
 	border-inline-start: 5px solid var(--color-warning-text);
-	background: var(--color-warning);
+	background: var(--wc-tint-warning, var(--color-background-dark));
 	color: var(--color-warning-text);
 	border-radius: var(--border-radius-small);
 	font-weight: 600;
@@ -87,7 +125,7 @@
 	padding: 14px 18px;
 	margin: 16px 0;
 	border-inline-start: 5px solid var(--color-error-text);
-	background: var(--color-error);
+	background: var(--wc-tint-danger, var(--color-background-dark));
 	color: var(--color-error-text);
 	border-radius: var(--border-radius-small);
 	font-weight: 700;
@@ -96,7 +134,7 @@
 	padding: 14px 18px;
 	margin: 16px 0;
 	border-inline-start: 5px solid var(--color-success-text);
-	background: var(--color-success);
+	background: var(--wc-tint-success, var(--color-background-dark));
 	color: var(--color-success-text);
 	border-radius: var(--border-radius-small);
 	font-weight: 600;

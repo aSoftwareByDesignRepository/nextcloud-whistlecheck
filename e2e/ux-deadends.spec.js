@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 import { login, assertNotServerUpdater } from './helpers/auth.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
 import { ensureReporterTarget } from './helpers/public-target.js'
-import { queryDb } from './helpers/stack.js'
+import { queryDb, cleanupCase, captureSubmitCaseId } from './helpers/stack.js'
 import { provisionOfficer, deprovisionOfficer } from './helpers/officer.js'
 
 /**
@@ -37,14 +37,6 @@ function makeCase(officerUid, status = 'received') {
 	mysql(`INSERT INTO oc_wchk_case_keys (case_id, officer_uid, wrapped_key, granted_at)
 		VALUES (${caseId}, '${officerUid}', 'e2e-synthetic-wrap', NOW())`)
 	return caseId
-}
-
-function cleanupCase(caseId) {
-	try {
-		mysql(`DELETE FROM oc_wchk_escalations WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_case_keys WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_cases WHERE id=${caseId};`)
-	} catch { /* best-effort */ }
 }
 
 test.describe('locked case stays workable (keyless officer)', () => {
@@ -109,17 +101,25 @@ test.describe('locked case stays workable (keyless officer)', () => {
 })
 
 test.describe('public flows: progress + closed states', () => {
+	const submittedCases = []
+	test.afterAll(() => {
+		for (const id of submittedCases) cleanupCase(id)
+	})
+
 	test('report submit shows busy feedback, not a frozen button', async ({ page }) => {
 		test.setTimeout(120000)
 		await page.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
 		await assertNotServerUpdater(page)
 		await page.locator('#wc-body').fill('ux busy-state check')
 		const btn = page.locator('#wc-report-form [type=submit]')
+		const submitted = captureSubmitCaseId(page)
 		await btn.click()
-		// Argon2id takes seconds — the button must say so.
+		// Argon2id takes seconds — the button must say so. Assert BEFORE
+		// awaiting the response: the settle handler re-enables it.
 		await expect(btn).toBeDisabled()
 		await expect(btn).toHaveAttribute('aria-busy', 'true')
 		await expect(btn).not.toHaveText('Send report')
+		submittedCases.push(await submitted)
 		await expect(page.locator('#wc-code-panel')).toBeVisible({ timeout: 90000 })
 	})
 
@@ -130,12 +130,13 @@ test.describe('public flows: progress + closed states', () => {
 		const pub = await pubContext.newPage()
 		await pub.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
 		await pub.locator('#wc-body').fill('archived-flow check')
+		const submitted = captureSubmitCaseId(pub)
 		await pub.locator('#wc-report-form [type=submit]').click()
 		const codeEl = pub.locator('#wc-code-panel .wc-code-value')
 		await expect(codeEl).not.toBeEmpty({ timeout: 90000 })
 		const code = (await codeEl.textContent() || '').trim()
 
-		const caseId = Number(mysql(`SELECT id FROM oc_wchk_cases ORDER BY id DESC LIMIT 1`))
+		const caseId = await submitted
 		mysql(`UPDATE oc_wchk_cases SET status='archived' WHERE id=${caseId}`)
 		try {
 			await pub.goto('/apps/whistlecheck/case', { waitUntil: 'domcontentloaded' })

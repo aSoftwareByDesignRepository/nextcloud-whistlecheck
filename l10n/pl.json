@@ -35,6 +35,7 @@
         "Billing": "Rozliczenia",
         "Breadcrumb": "Okruszki nawigacyjne",
         "Bug report": "Zgłoszenie błędu",
+        "Require a second officer to confirm case closure": "Wymagaj potwierdzenia zamknięcia sprawy przez drugiego referenta",
         "by": "przez",
         "By category": "Według kategorii",
         "By status": "Według statusu",
@@ -92,11 +93,15 @@
         "Encrypted in transit and at rest (JavaScript disabled)": "Szyfrowane podczas przesyłania i przechowywania (JavaScript wyłączony)",
         "End-to-end encrypted": "Szyfrowane end-to-end",
         "End-to-end encrypted reports from anonymous reporters.": "Zgłoszenia szyfrowane end-to-end od anonimowych sygnalistów.",
-        "Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to {n} case(s) until another officer re-grants them.": "Proszę wpisać bieżącą frazę hasłową, aby zachować dostęp do spraw. W razie zapomnienia proszę ponownie kliknąć „Zmień mój klucz” — dostęp do {n} spraw(y) zostanie utracony, dopóki inny referent nie przyzna go ponownie.",
+        "_Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to %n case until another officer re-grants them._::_Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to %n cases until another officer re-grants them._": [
+            "Proszę wpisać bieżącą frazę hasłową, aby zachować dostęp do spraw. W razie zapomnienia proszę ponownie kliknąć „Zmień mój klucz” — dostęp do %n sprawy zostanie utracony, dopóki inny referent nie przyzna go ponownie.",
+            "Proszę wpisać bieżącą frazę hasłową, aby zachować dostęp do spraw. W razie zapomnienia proszę ponownie kliknąć „Zmień mój klucz” — dostęp do %n spraw zostanie utracony, dopóki inny referent nie przyzna go ponownie.",
+            "Proszę wpisać bieżącą frazę hasłową, aby zachować dostęp do spraw. W razie zapomnienia proszę ponownie kliknąć „Zmień mój klucz” — dostęp do %n spraw zostanie utracony, dopóki inny referent nie przyzna go ponownie."
+        ],
         "Enter your WhistleCheck passphrase": "Proszę wpisać frazę hasłową WhistleCheck",
         "Entries stay encrypted until you open them.": "Wpisy pozostają zaszyfrowane, dopóki ich nie otworzysz.",
         "Escalate to TicketCheck": "Eskaluj do TicketCheck",
-        "Escalation officer (uid)": "Referent eskalacji (uid)",
+        "Escalation officer": "Referent eskalacji",
         "Escalation: a case is overdue.": "Eskalacja: sprawa jest po terminie.",
         "Escalations": "Eskalacje",
         "Event": "Zdarzenie",
@@ -170,7 +175,7 @@
         "Please check the highlighted fields.": "Proszę sprawdzić wyróżnione pola.",
         "Please fill in the highlighted fields.": "Wypełnij podświetlone pola.",
         "Please wait a moment": "Proszę chwilę poczekać",
-        "PoW escalation after N hits over limit": "Eskalacja PoW po N żądaniach ponad limit",
+        "Require proof-of-work after this many hits over the rate limit": "Wymagaj proof-of-work po tylu żądaniach ponad limit",
         "Print code": "Drukuj kod",
         "Priority": "Priorytet",
         "QR code of your case code": "Kod QR kodu sprawy",
@@ -241,7 +246,11 @@
         "This case is not encrypted for your key — another officer must re-grant access.": "Ta sprawa nie jest zaszyfrowana dla tego klucza — inny referent musi ponownie przyznać dostęp.",
         "This channel is not ready yet. Please try again later.": "Ten kanał nie jest jeszcze gotowy. Spróbuj ponownie później.",
         "This export was already sent.": "Ten eksport został już wysłany.",
-        "This protects the reporting channel against abuse. You can try again in about {n} seconds.": "To chroni kanał zgłoszeń przed nadużyciami. Ponowna próba możliwa za około {n} sekund.",
+        "_This protects the reporting channel against abuse. You can try again in about %n second._::_This protects the reporting channel against abuse. You can try again in about %n seconds._": [
+            "To chroni kanał zgłoszeń przed nadużyciami. Ponowna próba możliwa za około %n sekundę.",
+            "To chroni kanał zgłoszeń przed nadużyciami. Ponowna próba możliwa za około %n sekundy.",
+            "To chroni kanał zgłoszeń przed nadużyciami. Ponowna próba możliwa za około %n sekund."
+        ],
         "This report was encrypted on our server (JavaScript was off).": "To zgłoszenie zostało zaszyfrowane na naszym serwerze (JavaScript był wyłączony).",
         "Ticket created.": "Utworzono zgłoszenie.",
         "Ticket text": "Treść zgłoszenia",
@@ -272,15 +281,41 @@
         "You": "Ty",
         "Your case": "Sprawa",
         "Your case code": "Kod sprawy",
-        "Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.": "Bieżący klucz nie znajduje się na tym urządzeniu — rotacja odbierze dostęp do {n} spraw(y), dopóki inny referent nie przyzna go ponownie. Kliknąć ponownie, aby potwierdzić.",
+        "_Your current key is not on this device — rotating locks you out of %n case until another officer re-grants access. Click again to confirm._::_Your current key is not on this device — rotating locks you out of %n cases until another officer re-grants access. Click again to confirm._": [
+            "Bieżący klucz nie znajduje się na tym urządzeniu — rotacja odbierze dostęp do %n sprawy, dopóki inny referent nie przyzna go ponownie. Kliknąć ponownie, aby potwierdzić.",
+            "Bieżący klucz nie znajduje się na tym urządzeniu — rotacja odbierze dostęp do %n spraw, dopóki inny referent nie przyzna go ponownie. Kliknąć ponownie, aby potwierdzić.",
+            "Bieżący klucz nie znajduje się na tym urządzeniu — rotacja odbierze dostęp do %n spraw, dopóki inny referent nie przyzna go ponownie. Kliknąć ponownie, aby potwierdzić."
+        ],
         "Your current key is not on this device — rotating now locks you out of your cases until another officer re-grants access.": "Bieżący klucz nie znajduje się na tym urządzeniu — rotacja odbierze teraz dostęp do spraw, dopóki inny referent nie przyzna go ponownie.",
         "Your officer key is not on this device. Set it up on the Officers page to read cases.": "Klucz referenta nie znajduje się na tym urządzeniu. Proszę skonfigurować go na stronie Officers, aby czytać sprawy.",
         "Your report is saved. Keep your case code safe — it is the only way back in.": "Zgłoszenie jest zapisane. Proszę bezpiecznie przechować kod sprawy — to jedyny sposób powrotu.",
         "Your report was received. Case officers can now read and answer it.": "Zgłoszenie zostało odebrane. Referenci mogą je teraz przeczytać i odpowiedzieć na nie.",
-        "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.": "{n} spraw(y) nie udało się zaszyfrować ponownie — proszę kliknąć „Zmień mój klucz” jeszcze raz, aby kontynuować mimo to.",
-        "{n} cases": "{n} spraw",
-        "{n} entries": "{n} wpisów",
-        "{n} of {m} cases": "{n} spraw z {m}"
+        "_%n case could not be re-wrapped — click \"Rotate my key\" again to rotate anyway._::_%n cases could not be re-wrapped — click \"Rotate my key\" again to rotate anyway._": [
+            "%n sprawa nie mogła zostać zaszyfrowana ponownie — proszę kliknąć „Zmień mój klucz” jeszcze raz, aby kontynuować mimo to.",
+            "%n sprawy nie mogły zostać zaszyfrowane ponownie — proszę kliknąć „Zmień mój klucz” jeszcze raz, aby kontynuować mimo to.",
+            "%n spraw nie mogło zostać zaszyfrowanych ponownie — proszę kliknąć „Zmień mój klucz” jeszcze raz, aby kontynuować mimo to."
+        ],
+        "_%n case_::_%n cases_": [
+            "%n sprawa",
+            "%n sprawy",
+            "%n spraw"
+        ],
+        "_%n entry_::_%n entries_": [
+            "%n wpis",
+            "%n wpisy",
+            "%n wpisów"
+        ],
+        "_%n of {m} cases_::_%n of {m} cases_": [
+            "%n sprawa z {m}",
+            "%n sprawy z {m}",
+            "%n spraw z {m}"
+        ],
+        "Please confirm": "Potwierdź",
+        "Confirm": "Potwierdź",
+        "Cancel": "Anuluj",
+        "Back to your apps": "Wróć do swoich aplikacji",
+        "None": "Brak",
+        "no longer an officer": "nie jest już referentem"
     },
     "pluralForm": "nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);"
 }

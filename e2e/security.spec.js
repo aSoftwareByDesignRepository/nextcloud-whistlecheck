@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { login } from './helpers/auth.js'
 import { provisionOfficer, deprovisionOfficer, removeFromGroup } from './helpers/officer.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
-import { queryDb } from './helpers/stack.js'
+import { queryDb, cleanupCase } from './helpers/stack.js'
 
 /**
  * ATLAS Lens 2 — executed adversarial probes against the real stack.
@@ -32,18 +32,6 @@ function makeCase(officerUid, { sentinel = 'wcsentinel' } = {}) {
 	mysql(`INSERT INTO oc_wchk_case_keys (case_id, officer_uid, wrapped_key, granted_at)
 		VALUES (${caseId}, '${officerUid}', 'e2e-synthetic-wrap', NOW())`)
 	return { caseId, hint }
-}
-
-function cleanupCase(caseId, officerUid) {
-	try {
-		mysql(`DELETE FROM oc_wchk_escalations WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_case_keys WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_messages WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_idem WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_audit WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_cases WHERE id=${caseId};
-			DELETE FROM oc_helpdesk_tickets WHERE created_by='${officerUid}';`)
-	} catch { /* best-effort */ }
 }
 
 async function fetchJson(page, method, url, data, headers = {}) {
@@ -111,7 +99,11 @@ test.describe('security: executed probes', () => {
 		// in the DOM once the popover opens.
 		const openMenuLinks = async (p) => {
 			await p.goto('/index.php/apps/dashboard/', { waitUntil: 'networkidle' })
-			await p.getByRole('button', { name: /Open apps menu/ }).first().click()
+			// Structural selector: the waffle button's accessible name is a
+			// core-localized string — never match it by text. The layout's
+			// #header-start__appmenu id vanishes when Vue $mount() replaces the
+			// nav node, so anchor on the mounted .app-menu__waffle trigger.
+			await p.locator('header .app-menu__waffle, .app-menu__waffle').first().click()
 			const links = p.locator('body a[href*="/apps/"]')
 			await expect(links.first()).toBeVisible()
 			return links.evaluateAll((els) => els.map((a) => a.getAttribute('href')))

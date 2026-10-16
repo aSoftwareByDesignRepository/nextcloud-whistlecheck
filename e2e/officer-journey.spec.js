@@ -4,6 +4,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { login, assertNotServerUpdater } from './helpers/auth.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
 import { provisionOfficer, deprovisionOfficer } from './helpers/officer.js'
+import { cleanupCase, captureSubmitCaseId } from './helpers/stack.js'
 
 /**
  * Officer journey coverage — guards the class of bug that silently killed
@@ -147,6 +148,7 @@ test.describe('officer full journey (fresh fixture)', () => {
 	test('key setup → public submit → unlock → read case', async ({ page }) => {
 		test.setTimeout(240000)
 		const officer = provisionOfficer()
+		let submittedId = 0
 		try {
 		await login(page, { username: officer.uid, password: officer.password })
 		await assertNotServerUpdater(page)
@@ -180,7 +182,9 @@ test.describe('officer full journey (fresh fixture)', () => {
 		const bodyText = `journey body ${Date.now()}`
 		await pub.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
 		await pub.locator('#wc-body').fill(bodyText)
+		const submitted = captureSubmitCaseId(pub)
 		await pub.locator('#wc-report-form [type=submit]').click()
+		submittedId = await submitted
 		const codeEl = pub.locator('#wc-code-panel .wc-code-value')
 		await expect(codeEl).not.toBeEmpty({ timeout: 90000 })
 		await pubContext.close()
@@ -214,6 +218,7 @@ test.describe('officer full journey (fresh fixture)', () => {
 		expect(axe.violations, `axe on case page: ${JSON.stringify(axe.violations.map((v) => v.id))}`).toEqual([])
 		} finally {
 			deprovisionOfficer(officer.uid)
+			cleanupCase(submittedId)
 		}
 	})
 })
@@ -228,6 +233,7 @@ test.describe('re-grant ceremony (fresh fixtures)', () => {
 		// toast, no stored wrap) fails this test at the last assertion.
 		const officerA = provisionOfficer()
 		const officerB = provisionOfficer()
+		let submittedId = 0
 		const passA = 'grant-a-pass-9x42'
 		const passB1 = 'grant-b-one-9x42'
 		const passB2 = 'grant-b-two-9x42'
@@ -258,7 +264,9 @@ test.describe('re-grant ceremony (fresh fixtures)', () => {
 			const bodyText = `grant journey ${Date.now()}`
 			await pub.goto('/apps/whistlecheck/report', { waitUntil: 'domcontentloaded' })
 			await pub.locator('#wc-body').fill(bodyText)
+			const submitted = captureSubmitCaseId(pub)
 			await pub.locator('#wc-report-form [type=submit]').click()
+			submittedId = await submitted
 			await expect(pub.locator('#wc-code-panel .wc-code-value')).not.toBeEmpty({ timeout: 90000 })
 			await pubCtx.close()
 			await ctxB1.close()
@@ -323,6 +331,7 @@ test.describe('re-grant ceremony (fresh fixtures)', () => {
 			await ctxA.close().catch(() => {})
 			deprovisionOfficer(officerA.uid)
 			deprovisionOfficer(officerB.uid)
+			cleanupCase(submittedId)
 		}
 	})
 })

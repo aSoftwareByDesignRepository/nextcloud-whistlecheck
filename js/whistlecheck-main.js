@@ -14,6 +14,15 @@
 	const boot = () => bootEl().dataset || {};
 	const i18n = (() => { try { return JSON.parse(boot().wcI18n || "{}"); } catch (e) { return {}; } })();
 	const t = (key, fb) => i18n[key] || fb || key;
+	// Plural-aware translate via the auto-loaded l10n bundle — English
+	// two-form fallback when window.n is absent (jsdom tests).
+	const tn = (singular, plural, count) => {
+		const c = typeof count === 'number' ? count : parseInt(String(count), 10) || 0;
+		if (typeof window !== 'undefined' && typeof window.n === 'function') {
+			return window.n('whistlecheck', singular, plural, c);
+		}
+		return String(c === 1 ? singular : plural).replace(/%n/g, String(c));
+	};
 	const base = OC.generateUrl('/apps/whistlecheck');
 
 	// ── shared api + toast ────────────────────────────────────────────────
@@ -67,6 +76,64 @@
 	}
 	function dismiss(key) {
 		if (toastState[key]) { toastState[key].el.remove(); delete toastState[key]; }
+	}
+
+	/* Shared confirm dialog (design-system §3.9) — native <dialog> appended
+	 * to <body>, lazily created on first use; unscoped CSS in app.css.
+	 * Never window.confirm: unstyled chrome, no l10n, blocks the event loop. */
+	function wcConfirm(message, opts) {
+		opts = opts || {};
+		return new Promise((resolve) => {
+			const dlg = document.createElement('dialog');
+			dlg.className = 'wc-dialog';
+			const title = document.createElement('h2');
+			title.className = 'wc-dialog__title';
+			title.id = 'wc-confirm-title';
+			title.textContent = t('confirm_title', 'Please confirm');
+			dlg.setAttribute('aria-labelledby', title.id);
+			const text = document.createElement('p');
+			text.className = 'wc-dialog__text';
+			text.textContent = message;
+			const actions = document.createElement('div');
+			actions.className = 'wc-dialog__actions';
+			const cancel = document.createElement('button');
+			cancel.type = 'button';
+			cancel.className = 'wc-btn-secondary';
+			cancel.textContent = t('cancel', 'Cancel');
+			const ok = document.createElement('button');
+			ok.type = 'button';
+			ok.className = opts.danger === false ? 'wc-btn-primary' : 'wc-btn-danger';
+			ok.textContent = opts.confirmLabel || t('confirm', 'Confirm');
+			actions.appendChild(cancel);
+			actions.appendChild(ok);
+			dlg.appendChild(title);
+			dlg.appendChild(text);
+			dlg.appendChild(actions);
+			/* Mount inside .wc-app so scoped .wc-app .wc-btn-* rules reach the
+			 * buttons; <dialog> still renders in the top layer. */
+			(document.querySelector('.wc-app') || document.body).appendChild(dlg);
+			const invoker = document.activeElement;
+			let done = false;
+			const finish = (val) => {
+				if (done) { return; }
+				done = true;
+				if (dlg.open) { dlg.close(); }
+				dlg.remove();
+				if (invoker && document.contains(invoker)) { invoker.focus(); }
+				resolve(val);
+			};
+			dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); finish(false); });
+			/* NC notifications preventDefault()s the global Escape keydown,
+			 * which suppresses the native cancel event — close explicitly at
+			 * dialog level so Escape always works. */
+			dlg.addEventListener('keydown', (ev) => {
+				if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); finish(false); }
+			});
+			cancel.addEventListener('click', () => finish(false));
+			ok.addEventListener('click', () => finish(true));
+			dlg.showModal();
+			ok.focus();
+		});
 	}
 
 	function copyText(text) {
@@ -267,8 +334,8 @@
 		const countEl = root.querySelector('[data-wc-inbox-count]');
 		if (countEl) {
 			countEl.textContent = rows.length === inboxCases.length
-				? t('count_cases', '{n} cases').replace('{n}', String(rows.length))
-				: t('count_cases_of', '{n} of {m} cases').replace('{n}', String(rows.length)).replace('{m}', String(inboxCases.length));
+				? tn('%n case', '%n cases', rows.length)
+				: tn('%n of {m} cases', '%n of {m} cases', rows.length).replace('{m}', String(inboxCases.length));
 		}
 		tbody.innerHTML = '';
 		if (rows.length === 0) {
@@ -782,6 +849,12 @@
 
 		const holdForm = root.querySelector('[data-wc-hold-form]');
 		if (holdForm) {
+			// Reflect the current hold so officers see the persisted state —
+			// an empty form on an active hold reads as "no hold set".
+			const holdBox = holdForm.querySelector('[name=hold]');
+			const reasonIn = holdForm.querySelector('[name=reason]');
+			if (holdBox) holdBox.checked = !!data.legal_hold;
+			if (reasonIn) reasonIn.value = data.hold_reason || '';
 			holdForm.addEventListener('submit', async (ev) => {
 				ev.preventDefault();
 				const btn = holdForm.querySelector('[type=submit]');
@@ -1008,7 +1081,7 @@
 							rewraps[w.case_id] = await window.WcCrypto.sealToPubkey(ck, kp.pubkey);
 						}
 						if (failed > 0 && !allowPartial) {
-							keyError(t('rotate_partial', '{n} case(s) could not be re-wrapped — click "Rotate my key" again to rotate anyway.').replace('{n}', String(failed)));
+							keyError(tn('%n case could not be re-wrapped — click "Rotate my key" again to rotate anyway.', '%n cases could not be re-wrapped — click "Rotate my key" again to rotate anyway.', failed));
 							allowPartial = true;
 							return;
 						}
@@ -1018,12 +1091,14 @@
 							// Key IS on this device — the officer just left the
 							// passphrase empty. Demand it explicitly instead of
 							// the misleading "not on this device" orphan path.
-							keyError(t('rotate_need_oldpass',
-								'Enter your current passphrase to keep access to your cases. If you have forgotten it, click "Rotate my key" again — you will lose access to {n} case(s) until another officer re-grants them.').replace('{n}', String(held.length)),
+							keyError(tn('Enter your current passphrase to keep access to your cases. If you have forgotten it, click "Rotate my key" again — you will lose access to %n case until another officer re-grants them.',
+								'Enter your current passphrase to keep access to your cases. If you have forgotten it, click "Rotate my key" again — you will lose access to %n cases until another officer re-grants them.',
+								held.length),
 								oldPassField);
 						} else {
-							keyError(t('rotate_orphan_confirm',
-								'Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.').replace('{n}', String(held.length)));
+							keyError(tn('Your current key is not on this device — rotating locks you out of %n case until another officer re-grants access. Click again to confirm.',
+								'Your current key is not on this device — rotating locks you out of %n cases until another officer re-grants access. Click again to confirm.',
+								held.length));
 						}
 						allowPartial = true;
 						return;
@@ -1117,7 +1192,7 @@
 					btn.textContent = t('revoke', 'Revoke');
 					btn.addEventListener('click', async () => {
 						if (btn.disabled) return;
-						if (!window.confirm(t('confirm_revoke', 'Revoke this officer? You will re-wrap all cases afterwards.'))) return;
+						if (!(await wcConfirm(t('confirm_revoke', 'Revoke this officer? You will re-wrap all cases afterwards.')))) return;
 						btn.disabled = true;
 						try {
 							await api('/api/officers/' + encodeURIComponent(o.uid), { method: 'DELETE' });
@@ -1277,7 +1352,7 @@
 			const events = data.events || [];
 			const countEl = root.querySelector('[data-wc-audit-count]');
 			if (countEl) {
-				countEl.textContent = t('audit_entries', '{n} entries').replace('{n}', String(events.length));
+				countEl.textContent = tn('%n entry', '%n entries', events.length);
 			}
 			tbody.innerHTML = '';
 			tbody.removeAttribute('aria-busy');

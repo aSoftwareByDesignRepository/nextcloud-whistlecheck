@@ -35,6 +35,7 @@
         "Billing": "Facturación",
         "Breadcrumb": "Miga de pan",
         "Bug report": "Informe de error",
+        "Require a second officer to confirm case closure": "Exigir que un segundo gestor confirme el cierre del caso",
         "by": "por",
         "By category": "Por categoría",
         "By status": "Por estado",
@@ -92,11 +93,14 @@
         "Encrypted in transit and at rest (JavaScript disabled)": "Cifrado en tránsito y en reposo (JavaScript desactivado)",
         "End-to-end encrypted": "Cifrado de extremo a extremo",
         "End-to-end encrypted reports from anonymous reporters.": "Denuncias cifradas de extremo a extremo de denunciantes anónimos.",
-        "Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to {n} case(s) until another officer re-grants them.": "Introduzca su frase de contraseña actual para mantener el acceso a sus casos. Si la ha olvidado, pulse de nuevo «Rotar mi clave» — perderá el acceso a {n} caso(s) hasta que otro gestor se lo conceda de nuevo.",
+        "_Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to %n case until another officer re-grants them._::_Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to %n cases until another officer re-grants them._": [
+            "Introduzca su frase de contraseña actual para mantener el acceso a sus casos. Si la ha olvidado, pulse de nuevo «Rotar mi clave» — perderá el acceso a %n caso hasta que otro gestor se lo conceda de nuevo.",
+            "Introduzca su frase de contraseña actual para mantener el acceso a sus casos. Si la ha olvidado, pulse de nuevo «Rotar mi clave» — perderá el acceso a %n casos hasta que otro gestor se lo conceda de nuevo."
+        ],
         "Enter your WhistleCheck passphrase": "Introduzca su frase de contraseña de WhistleCheck",
         "Entries stay encrypted until you open them.": "Las entradas permanecen cifradas hasta que las abra.",
         "Escalate to TicketCheck": "Escalar a TicketCheck",
-        "Escalation officer (uid)": "Gestor de escalado (uid)",
+        "Escalation officer": "Gestor de escalado",
         "Escalation: a case is overdue.": "Escalado: un caso está vencido.",
         "Escalations": "Escalaciones",
         "Event": "Evento",
@@ -170,7 +174,7 @@
         "Please check the highlighted fields.": "Compruebe los campos resaltados.",
         "Please fill in the highlighted fields.": "Rellene los campos resaltados.",
         "Please wait a moment": "Espere un momento",
-        "PoW escalation after N hits over limit": "Escalado PoW tras N solicitudes por encima del límite",
+        "Require proof-of-work after this many hits over the rate limit": "Requerir prueba de trabajo tras este número de solicitudes por encima del límite",
         "Print code": "Imprimir código",
         "Priority": "Prioridad",
         "QR code of your case code": "Código QR de su código de caso",
@@ -241,7 +245,10 @@
         "This case is not encrypted for your key — another officer must re-grant access.": "Este caso no está cifrado para su clave — otro gestor debe concederle el acceso de nuevo.",
         "This channel is not ready yet. Please try again later.": "Este canal aún no está listo. Inténtelo más tarde.",
         "This export was already sent.": "Esta exportación ya se envió.",
-        "This protects the reporting channel against abuse. You can try again in about {n} seconds.": "Esto protege el canal de denuncias contra abusos. Puede volver a intentarlo en unos {n} segundos.",
+        "_This protects the reporting channel against abuse. You can try again in about %n second._::_This protects the reporting channel against abuse. You can try again in about %n seconds._": [
+            "Esto protege el canal de denuncias contra abusos. Puede volver a intentarlo en %n segundo.",
+            "Esto protege el canal de denuncias contra abusos. Puede volver a intentarlo en %n segundos."
+        ],
         "This report was encrypted on our server (JavaScript was off).": "Esta denuncia se cifró en nuestro servidor (JavaScript estaba desactivado).",
         "Ticket created.": "Ticket creado.",
         "Ticket text": "Texto del ticket",
@@ -272,15 +279,36 @@
         "You": "Usted",
         "Your case": "Su caso",
         "Your case code": "Su código de caso",
-        "Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.": "Su clave actual no está en este dispositivo — rotarla le deja sin acceso a {n} caso(s) hasta que otro gestor se lo conceda de nuevo. Pulse de nuevo para confirmar.",
+        "_Your current key is not on this device — rotating locks you out of %n case until another officer re-grants access. Click again to confirm._::_Your current key is not on this device — rotating locks you out of %n cases until another officer re-grants access. Click again to confirm._": [
+            "Su clave actual no está en este dispositivo — rotarla le deja sin acceso a %n caso hasta que otro gestor se lo conceda de nuevo. Pulse de nuevo para confirmar.",
+            "Su clave actual no está en este dispositivo — rotarla le deja sin acceso a %n casos hasta que otro gestor se lo conceda de nuevo. Pulse de nuevo para confirmar."
+        ],
         "Your current key is not on this device — rotating now locks you out of your cases until another officer re-grants access.": "Su clave actual no está en este dispositivo — rotarla ahora le deja sin acceso a sus casos hasta que otro gestor se lo conceda de nuevo.",
         "Your officer key is not on this device. Set it up on the Officers page to read cases.": "Su clave de oficial no está en este dispositivo. Configúrela en la página Officers para leer casos.",
         "Your report is saved. Keep your case code safe — it is the only way back in.": "Su denuncia está guardada. Guarde su código de caso en un lugar seguro — es la única forma de volver a entrar.",
         "Your report was received. Case officers can now read and answer it.": "Su denuncia ha sido recibida. Los gestores ya pueden leerla y responderla.",
-        "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.": "{n} caso(s) no se han podido recifrar — pulse «Rotar mi clave» de nuevo para continuar igualmente.",
-        "{n} cases": "{n} casos",
-        "{n} entries": "{n} entradas",
-        "{n} of {m} cases": "{n} casos de {m}"
+        "_%n case could not be re-wrapped — click \"Rotate my key\" again to rotate anyway._::_%n cases could not be re-wrapped — click \"Rotate my key\" again to rotate anyway._": [
+            "%n caso no se ha podido recifrar — pulse «Rotar mi clave» de nuevo para continuar igualmente.",
+            "%n casos no se han podido recifrar — pulse «Rotar mi clave» de nuevo para continuar igualmente."
+        ],
+        "_%n case_::_%n cases_": [
+            "%n caso",
+            "%n casos"
+        ],
+        "_%n entry_::_%n entries_": [
+            "%n entrada",
+            "%n entradas"
+        ],
+        "_%n of {m} cases_::_%n of {m} cases_": [
+            "%n caso de {m}",
+            "%n casos de {m}"
+        ],
+        "Please confirm": "Confirme",
+        "Confirm": "Confirmar",
+        "Cancel": "Cancelar",
+        "Back to your apps": "Volver a sus aplicaciones",
+        "None": "Ninguno",
+        "no longer an officer": "ya no es gestor"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

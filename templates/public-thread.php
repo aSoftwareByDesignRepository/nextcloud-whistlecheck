@@ -9,12 +9,14 @@ $view = $_['view'] ?? ['messages' => []];
 	data-wc-i18n="<?php p(json_encode($_['i18n'] ?? [])); ?>">
 		<a class="wc-skip" href="#main-content"><?php p($l->t('Skip to content')); ?></a>
 <main class="wc-public-main" id="main-content">
-		<h1><?php p($l->t('Your case')); ?></h1>
 		<?php if (empty($view['e2e'])): ?>
 			<p class="wc-honesty" role="note"><?php p($l->t('Decrypted on the server (JavaScript off).')); ?></p>
 		<?php endif; ?>
-		<p><?php p($l->t('Status:')); ?> <strong><?php p($view['status']); ?></strong>
-			· <?php p($l->t('Feedback due:')); ?> <?php p($view['feedback_due']); ?></p>
+		<section id="wc-thread" class="wc-thread" aria-labelledby="wc-thread-heading">
+		<h1 id="wc-thread-heading"><?php p($l->t('Your case')); ?></h1>
+		<p><?php p($l->t('Status:')); ?>
+			<span class="wc-badge<?php p(($view['status_variant'] ?? '') !== '' ? ' wc-badge--' . $view['status_variant'] : ''); ?>"><span class="wc-badge__dot" aria-hidden="true"></span><?php p($view['status_label'] ?? $view['status']); ?></span>
+			· <?php p($l->t('Feedback due:')); ?> <?php p($view['feedback_due_human'] ?? $view['feedback_due']); ?></p>
 
 		<ul class="wc-messages">
 			<?php foreach ($view['messages'] as $m): ?>
@@ -24,7 +26,7 @@ $view = $_['view'] ?? ['messages' => []];
 					<?php else: ?>
 						<p><?php p($m['text']); /* sanitized + escaped plaintext */ ?></p>
 					<?php endif; ?>
-					<time datetime="<?php p($m['at']); ?>"><?php p($m['at']); ?></time>
+					<time datetime="<?php p($m['at']); ?>"><?php p($m['at_human'] ?? $m['at']); ?></time>
 				</li>
 			<?php endforeach; ?>
 		</ul>
@@ -42,5 +44,6 @@ $view = $_['view'] ?? ['messages' => []];
 		<?php else: ?>
 			<p class="wc-hint" role="note"><?php p($l->t('This case is closed. The procedure has ended.')); ?></p>
 		<?php endif; ?>
+		</section>
 	</main>
 </div>

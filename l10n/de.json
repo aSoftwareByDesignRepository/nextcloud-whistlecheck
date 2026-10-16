@@ -35,6 +35,7 @@
         "Billing": "Abrechnung",
         "Breadcrumb": "Brotkrümelnavigation",
         "Bug report": "Fehlermeldung",
+        "Require a second officer to confirm case closure": "Zweite:r Sachbearbeiter:in muss Fallabschluss bestätigen",
         "by": "von",
         "By category": "Nach Kategorie",
         "By status": "Nach Status",
@@ -92,11 +93,14 @@
         "Encrypted in transit and at rest (JavaScript disabled)": "Bei Übertragung und Speicherung verschlüsselt (JavaScript deaktiviert)",
         "End-to-end encrypted": "Ende-zu-Ende-verschlüsselt",
         "End-to-end encrypted reports from anonymous reporters.": "Ende-zu-Ende-verschlüsselte Meldungen anonymer Hinweisgeber.",
-        "Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to {n} case(s) until another officer re-grants them.": "Geben Sie Ihr aktuelles Passwort ein, um den Zugriff auf Ihre Fälle zu behalten. Falls Sie es vergessen haben, klicken Sie erneut auf \\„Schlüssel rotieren\\“ — Sie verlieren den Zugriff auf {n} Fall/Fälle, bis eine andere Person ihn erneut erteilt.",
+        "_Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to %n case until another officer re-grants them._::_Enter your current passphrase to keep access to your cases. If you have forgotten it, click \"Rotate my key\" again — you will lose access to %n cases until another officer re-grants them._": [
+            "Geben Sie Ihr aktuelles Passwort ein, um den Zugriff auf Ihre Fälle zu behalten. Falls Sie es vergessen haben, klicken Sie erneut auf „Meinen Schlüssel rotieren“ — Sie verlieren den Zugriff auf %n Fall, bis eine andere Person ihn erneut erteilt.",
+            "Geben Sie Ihr aktuelles Passwort ein, um den Zugriff auf Ihre Fälle zu behalten. Falls Sie es vergessen haben, klicken Sie erneut auf „Meinen Schlüssel rotieren“ — Sie verlieren den Zugriff auf %n Fälle, bis eine andere Person ihn erneut erteilt."
+        ],
         "Enter your WhistleCheck passphrase": "Ihr WhistleCheck-Passwort eingeben",
         "Entries stay encrypted until you open them.": "Einträge bleiben verschlüsselt, bis Sie sie öffnen.",
         "Escalate to TicketCheck": "An TicketCheck eskalieren",
-        "Escalation officer (uid)": "Eskalations-Sachbearbeiter (UID)",
+        "Escalation officer": "Eskalations-Sachbearbeiter",
         "Escalation: a case is overdue.": "Eskalation: Ein Fall ist überfällig.",
         "Escalations": "Eskalationen",
         "Event": "Ereignis",
@@ -170,7 +174,7 @@
         "Please check the highlighted fields.": "Bitte prüfen Sie die markierten Felder.",
         "Please fill in the highlighted fields.": "Bitte füllen Sie die markierten Felder aus.",
         "Please wait a moment": "Bitte kurz warten",
-        "PoW escalation after N hits over limit": "PoW-Eskalation nach N Anfragen über dem Limit",
+        "Require proof-of-work after this many hits over the rate limit": "Proof-of-Work nach so vielen Anfragen über dem Limit verlangen",
         "Print code": "Code drucken",
         "Priority": "Priorität",
         "QR code of your case code": "QR-Code Ihres Fallcodes",
@@ -241,7 +245,10 @@
         "This case is not encrypted for your key — another officer must re-grant access.": "Dieser Fall ist nicht für Ihren Schlüssel verschlüsselt — eine andere Person muss den Zugriff erneut erteilen.",
         "This channel is not ready yet. Please try again later.": "Dieser Kanal ist noch nicht bereit. Bitte später erneut versuchen.",
         "This export was already sent.": "Dieser Export wurde bereits gesendet.",
-        "This protects the reporting channel against abuse. You can try again in about {n} seconds.": "Dies schützt den Meldekanal vor Missbrauch. Sie können es in etwa {n} Sekunden erneut versuchen.",
+        "_This protects the reporting channel against abuse. You can try again in about %n second._::_This protects the reporting channel against abuse. You can try again in about %n seconds._": [
+            "Dies schützt den Meldekanal vor Missbrauch. Sie können es in etwa %n Sekunde erneut versuchen.",
+            "Dies schützt den Meldekanal vor Missbrauch. Sie können es in etwa %n Sekunden erneut versuchen."
+        ],
         "This report was encrypted on our server (JavaScript was off).": "Diese Meldung wurde auf unserem Server verschlüsselt (JavaScript war aus).",
         "Ticket created.": "Ticket erstellt.",
         "Ticket text": "Tickettext",
@@ -272,15 +279,36 @@
         "You": "Sie",
         "Your case": "Ihr Fall",
         "Your case code": "Ihr Fallcode",
-        "Your current key is not on this device — rotating locks you out of {n} case(s) until another officer re-grants access. Click again to confirm.": "Ihr aktueller Schlüssel ist nicht auf diesem Gerät — die Rotation sperrt Sie aus {n} Fall/Fällen aus, bis eine andere Person den Zugriff erneut erteilt. Erneut klicken zum Bestätigen.",
+        "_Your current key is not on this device — rotating locks you out of %n case until another officer re-grants access. Click again to confirm._::_Your current key is not on this device — rotating locks you out of %n cases until another officer re-grants access. Click again to confirm._": [
+            "Ihr aktueller Schlüssel ist nicht auf diesem Gerät — die Rotation sperrt Sie aus %n Fall aus, bis eine andere Person den Zugriff erneut erteilt. Erneut klicken zum Bestätigen.",
+            "Ihr aktueller Schlüssel ist nicht auf diesem Gerät — die Rotation sperrt Sie aus %n Fällen aus, bis eine andere Person den Zugriff erneut erteilt. Erneut klicken zum Bestätigen."
+        ],
         "Your current key is not on this device — rotating now locks you out of your cases until another officer re-grants access.": "Ihr aktueller Schlüssel ist nicht auf diesem Gerät — die Rotation sperrt Sie aus Ihren Fällen aus, bis eine andere Person den Zugriff erneut erteilt.",
         "Your officer key is not on this device. Set it up on the Officers page to read cases.": "Ihr Officer-Schlüssel ist nicht auf diesem Gerät. Richten Sie ihn auf der Seite „Officers“ ein, um Fälle zu lesen.",
         "Your report is saved. Keep your case code safe — it is the only way back in.": "Ihre Meldung ist gespeichert. Bewahren Sie Ihren Fall-Code sicher auf — er ist der einzige Weg zurück.",
         "Your report was received. Case officers can now read and answer it.": "Ihre Meldung wurde erhalten. Sachbearbeiter können sie nun lesen und beantworten.",
-        "{n} case(s) could not be re-wrapped — click \"Rotate my key\" again to rotate anyway.": "{n} Fall/Fälle konnte(n) nicht neu verschlüsselt werden — erneut auf „Meinen Schlüssel rotieren“ klicken, um trotzdem fortzufahren.",
-        "{n} cases": "{n} Fälle",
-        "{n} entries": "{n} Einträge",
-        "{n} of {m} cases": "{n} von {m} Fällen"
+        "_%n case could not be re-wrapped — click \"Rotate my key\" again to rotate anyway._::_%n cases could not be re-wrapped — click \"Rotate my key\" again to rotate anyway._": [
+            "%n Fall konnte nicht neu verschlüsselt werden — erneut auf „Meinen Schlüssel rotieren“ klicken, um trotzdem fortzufahren.",
+            "%n Fälle konnten nicht neu verschlüsselt werden — erneut auf „Meinen Schlüssel rotieren“ klicken, um trotzdem fortzufahren."
+        ],
+        "_%n case_::_%n cases_": [
+            "%n Fall",
+            "%n Fälle"
+        ],
+        "_%n entry_::_%n entries_": [
+            "%n Eintrag",
+            "%n Einträge"
+        ],
+        "_%n of {m} cases_::_%n of {m} cases_": [
+            "%n von {m} Fällen",
+            "%n von {m} Fällen"
+        ],
+        "Please confirm": "Bitte bestätigen",
+        "Confirm": "Bestätigen",
+        "Cancel": "Abbrechen",
+        "Back to your apps": "Zurück zu Ihren Apps",
+        "None": "Keine",
+        "no longer an officer": "nicht mehr Sachbearbeiter"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

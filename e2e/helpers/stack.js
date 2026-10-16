@@ -71,3 +71,43 @@ export function queryDbSafe(sql) {
 		return ''
 	}
 }
+
+/**
+ * Delete one case and every child row, including a helpdesk ticket an
+ * escalation minted for it. Portable SQL only (both stacks).
+ *
+ * oc_wchk_audit is intentionally NOT touched: it is a sequential hash
+ * chain — removing a mid-chain row breaks `chain_ok` for every later
+ * verification. Open cases have no retention_until, so without this the
+ * suite would leak a case + messages on every run.
+ */
+export function cleanupCase(caseId) {
+	const id = Number(caseId)
+	if (!Number.isInteger(id) || id <= 0) return
+	queryDbSafe(`DELETE FROM oc_helpdesk_tickets WHERE id IN
+		(SELECT ticket_id FROM oc_wchk_escalations WHERE case_id=${id} AND ticket_app='ticketcheck');
+		DELETE FROM oc_wchk_escalations WHERE case_id=${id};
+		DELETE FROM oc_wchk_notes WHERE case_id=${id};
+		DELETE FROM oc_wchk_attachments WHERE case_id=${id};
+		DELETE FROM oc_wchk_messages WHERE case_id=${id};
+		DELETE FROM oc_wchk_idem WHERE case_id=${id};
+		DELETE FROM oc_wchk_case_keys WHERE case_id=${id};
+		DELETE FROM oc_wchk_cases WHERE id=${id};`)
+}
+
+/**
+ * Capture the `case_id` from the next /api/public/submit response.
+ * Call BEFORE clicking submit: `const idP = captureSubmitCaseId(page)`.
+ * Resolves to 0 if the submit fails — cleanupCase(0) is a no-op.
+ */
+export async function captureSubmitCaseId(page) {
+	try {
+		const res = await page.waitForResponse(
+			(r) => r.url().includes('/api/public/submit') && r.request().method() === 'POST',
+			{ timeout: 120000 })
+		const json = await res.json()
+		return Number(json?.data?.case_id) || 0
+	} catch {
+		return 0
+	}
+}

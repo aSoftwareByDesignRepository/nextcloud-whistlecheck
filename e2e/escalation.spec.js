@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 import { login, assertNotServerUpdater } from './helpers/auth.js'
 import { provisionOfficer, deprovisionOfficer } from './helpers/officer.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
-import { queryDb } from './helpers/stack.js'
+import { queryDb, cleanupCase } from './helpers/stack.js'
 
 /**
  * FC-WCHK-EXPORT — officer escalation to TicketCheck.
@@ -31,15 +31,6 @@ function makeCase(officerUid) {
 	mysql(`INSERT INTO oc_wchk_case_keys (case_id, officer_uid, wrapped_key, granted_at)
 		VALUES (${caseId}, '${officerUid}', 'e2e-synthetic-wrap', NOW())`)
 	return caseId
-}
-
-function cleanupCase(caseId, officerUid) {
-	try {
-		mysql(`DELETE FROM oc_wchk_escalations WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_case_keys WHERE case_id=${caseId};
-			DELETE FROM oc_wchk_cases WHERE id=${caseId};
-			DELETE FROM oc_helpdesk_tickets WHERE created_by='${officerUid}';`)
-	} catch { /* best-effort */ }
 }
 
 test.describe('escalation to TicketCheck', () => {
