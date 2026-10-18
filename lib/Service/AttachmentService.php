@@ -150,7 +150,6 @@ class AttachmentService
 			default => false,
 		};
 		$out = $ok ? (string)ob_get_clean() : (ob_end_clean() ?: '');
-		imagedestroy($img);
 		return $ok && $out !== '' ? $out : $data;
 	}
 }

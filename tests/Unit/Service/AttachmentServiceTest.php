@@ -163,7 +163,6 @@ class AttachmentServiceTest extends TestCase
 		ob_start();
 		imagepng($img);
 		$png = (string)ob_get_clean();
-		imagedestroy($img);
 		$dirty = $png . 'EXIF-GARBAGE-TAIL';
 		$out = $this->svc->stripMetadata($dirty, 'image/png');
 		$this->assertStringStartsWith("\x89PNG\r\n\x1a\n", $out);

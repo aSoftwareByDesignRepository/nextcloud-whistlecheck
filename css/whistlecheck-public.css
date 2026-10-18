@@ -35,10 +35,14 @@
 }
 /* NC guest layout: #content is position:fixed + flex — main must scroll
  * itself (min-height:0 lets the flex item shrink; overflow-y:auto makes the
- * long form scrollable instead of clipped below the fold). */
+ * long form scrollable instead of clipped below the fold). width:100% keeps
+ * the column at the max-width clamp instead of shrinking to max-content —
+ * otherwise the welcome/hint copy's translation length resizes the layout. */
 .wc-public-main {
 	overflow-y: auto;
 	min-height: 0;
+	width: 100%;
+	box-sizing: border-box;
 	max-width: 680px;
 	margin: 0 auto;
 	padding: 32px 20px 80px;

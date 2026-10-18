@@ -13,15 +13,32 @@ import { randomBytes } from 'node:crypto'
 import { login, assertNotServerUpdater } from './helpers/auth.js'
 import { resetRateBuckets } from './helpers/ratelimit.js'
 import { ensureReporterTarget } from './helpers/public-target.js'
-import { queryDb } from './helpers/stack.js'
+import { queryDb, occ } from './helpers/stack.js'
 import { provisionOfficer, deprovisionOfficer } from './helpers/officer.js'
 
 const mysql = queryDb
 const TOLERANCE = { maxDiffPixelRatio: 0.02 }
 
+// Goldens are English. Guest pages follow the instance `default_language`
+// (Accept-Language is not consulted), which sibling lanes mutate on the
+// shared dev instance — pin it to en for the run, restore afterwards.
+let prevLanguage = ''
 test.beforeAll(() => {
 	resetRateBuckets()
 	ensureReporterTarget()
+	try {
+		prevLanguage = occ(['config:system:get', 'default_language']).trim()
+	} catch { /* unset */ }
+	occ(['config:system:set', 'default_language', '--value', 'en'])
+})
+test.afterAll(() => {
+	try {
+		if (prevLanguage === '') {
+			occ(['config:system:delete', 'default_language'])
+		} else {
+			occ(['config:system:set', 'default_language', '--value', prevLanguage])
+		}
+	} catch { /* best-effort restore */ }
 })
 
 test.describe('public pages', () => {

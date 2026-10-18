@@ -25,7 +25,7 @@ release:
 			--exclude='e2e' --exclude='playwright-report' --exclude='playwright.config.js' \
 			--exclude='docs' --exclude='phpunit.xml' --exclude='phpunit.integration.xml' \
 			--exclude='.phpunit.cache' --exclude='.eslintcache' \
-			--exclude='*.canvas.tsx' --exclude='vendor' \
+			--exclude='*.canvas.tsx' --exclude='/vendor' --exclude='Makefile' \
 			./ "$$staging/$(app_name)/" && \
 		tar -czf $(archive_path) -C "$$staging" $(app_name) && \
 		rm -rf "$$staging"
